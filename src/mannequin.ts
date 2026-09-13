@@ -361,11 +361,11 @@ export class WoodenMannequin {
     const cup = new Mesh(
       new LatheGeometry(
         [
-          new Vector2(0.034, -0.028),
-          new Vector2(0.04, -0.01),
-          new Vector2(0.052, 0.01),
-          new Vector2(0.062, 0.026),
-          new Vector2(0.058, 0.034),
+          new Vector2(0.036, -0.032),
+          new Vector2(0.044, -0.012),
+          new Vector2(0.058, 0.01),
+          new Vector2(0.07, 0.028),
+          new Vector2(0.066, 0.038),
         ],
         32,
       ),
@@ -376,11 +376,11 @@ export class WoodenMannequin {
     socket.add(cup);
 
     const lip = new Mesh(
-      new TorusGeometry(0.056, 0.007, 12, 36),
+      new TorusGeometry(0.064, 0.008, 12, 36),
       this.joint,
     );
     lip.rotation.x = Math.PI / 2;
-    lip.position.y = 0.03;
+    lip.position.y = 0.034;
     lip.castShadow = true;
     lip.receiveShadow = true;
     socket.add(lip);

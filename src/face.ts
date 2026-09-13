@@ -11,14 +11,14 @@ import {
   Texture,
   TextureLoader,
   Vector2,
-  Vector3,
 } from "three";
 import type { WebGLProgramParametersWithUniforms } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { WoodenMannequin } from "./mannequin";
 import { createWoodMaps } from "./wood";
 
-const HEAD_HEIGHT = 0.228;
+/** Chin-to-crown on the mannequin, in meters. */
+const FACE_HEIGHT = 0.2;
 
 function loadTexture(url: string, color: boolean): Promise<Texture> {
   return new TextureLoader().loadAsync(url).then((texture) => {
@@ -70,10 +70,12 @@ function blendNeckIntoWood(
   woodMap: Texture,
   clipBottom: number,
   skinStart: number,
+  neckRadius: number,
 ): void {
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     shader.uniforms.woodMap = { value: woodMap };
     shader.uniforms.neckClip = { value: new Vector2(clipBottom, skinStart) };
+    shader.uniforms.neckRadius = { value: neckRadius };
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -93,26 +95,31 @@ function blendNeckIntoWood(
         `#include <common>
         uniform sampler2D woodMap;
         uniform vec2 neckClip;
+        uniform float neckRadius;
         varying vec3 vFacePos;`,
       )
       .replace(
         "#include <opaque_fragment>",
         `#include <opaque_fragment>
         float neckBand = smoothstep(neckClip.x, neckClip.y, vFacePos.y);
-        float nape = smoothstep(0.05, -0.03, vFacePos.z) * (1.0 - smoothstep(neckClip.y, neckClip.y + 0.05, vFacePos.y));
-        float keepSkin = clamp(neckBand * (1.0 - nape * 0.88), 0.0, 1.0);
-        if (keepSkin < 0.045) discard;
-        vec3 woodC = texture2D(woodMap, vFacePos.xz * 3.4 + 0.5).rgb;
+        float radial = length(vFacePos.xz);
+        float maxR = mix(neckRadius * 0.92, neckRadius * 2.6, neckBand);
+        if (vFacePos.y < neckClip.x || radial > maxR) discard;
+        float nape = smoothstep(0.35, -0.15, vFacePos.z) * (1.0 - neckBand);
+        float keepSkin = clamp(neckBand * (1.0 - nape * 0.9), 0.0, 1.0);
+        if (keepSkin < 0.05) discard;
+        vec3 woodC = texture2D(woodMap, vFacePos.xz * 0.35 + 0.5).rgb;
         gl_FragColor.rgb = mix(woodC, gl_FragColor.rgb, keepSkin);
         `,
       );
   };
-  material.customProgramCacheKey = () => "face-neck-blend";
+  material.customProgramCacheKey = () => "face-neck-blend-v2";
 }
 
 /**
  * Lee Perry-Smith Infinite 3D Head Scan (CC BY 3.0).
- * Seated in a wooden neck socket; the lower neck fades into walnut.
+ * Shoulders and extra bust are clipped. The remaining neck fades
+ * into walnut inside the mannequin socket.
  */
 export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group> {
   const base = import.meta.env.BASE_URL;
@@ -125,6 +132,21 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
   ]);
 
   const scan = firstMesh(gltf.scene);
+  scan.position.set(0, 0, 0);
+  scan.rotation.set(0, 0, 0);
+  scan.scale.set(1, 1, 1);
+  scan.geometry.computeBoundingBox();
+  const bbox = scan.geometry.boundingBox ?? new Box3();
+  const ymin = bbox.min.y;
+  const ymax = bbox.max.y;
+  const span = Math.max(ymax - ymin, 1e-5);
+  const xExtent = Math.max(bbox.max.x - bbox.min.x, 1e-5);
+
+  // Drop the lower ~40% (wide neck stump / bust cut). Fade through the throat.
+  const clipBottom = ymin + span * 0.4;
+  const skinStart = ymin + span * 0.56;
+  const visible = ymax - clipBottom;
+
   const roughnessMap = specToRoughness(spec);
   const wood = createWoodMaps("#c08a4a", 14, "walnut", 256);
   const material = new MeshPhysicalMaterial({
@@ -136,8 +158,8 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
     roughness: 0.44,
     metalness: 0,
     displacementMap: displacement,
-    displacementScale: 0.0032,
-    displacementBias: -0.001,
+    displacementScale: 0.0024,
+    displacementBias: -0.0008,
     sheen: 0.42,
     sheenColor: new Color("#c47a5a"),
     sheenRoughness: 0.4,
@@ -145,30 +167,18 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
     clearcoatRoughness: 0.5,
     envMapIntensity: 0.62,
   });
+  blendNeckIntoWood(material, wood.map, clipBottom, skinStart, xExtent * 0.38);
   scan.material = material;
   scan.castShadow = true;
   scan.receiveShadow = true;
 
-  gltf.scene.updateMatrixWorld(true);
-  const box = new Box3().setFromObject(gltf.scene);
-  const size = box.getSize(new Vector3());
-  const center = box.getCenter(new Vector3());
-  scan.position.sub(center);
-  scan.position.y += size.y * 0.015;
-
-  const local = new Box3().setFromCenterAndSize(
-    new Vector3(0, size.y * 0.015, 0),
-    size,
-  );
-  const yMin = local.min.y;
-  const span = size.y;
-  blendNeckIntoWood(material, wood.map, yMin + span * 0.06, yMin + span * 0.3);
-
+  const scale = FACE_HEIGHT / visible;
   const wrapper = new Group();
   wrapper.name = "face";
-  wrapper.add(gltf.scene);
-  wrapper.scale.setScalar(HEAD_HEIGHT / Math.max(size.y, 1e-5));
-  wrapper.position.set(0, 0.05, 0.008);
+  wrapper.add(scan);
+  wrapper.scale.setScalar(scale);
+  // Collar lip sits near head y = 0.018. Put the fade band in that cup.
+  wrapper.position.set(0, 0.018 - skinStart * scale, 0.006);
 
   if (figure.skull) figure.skull.visible = false;
   figure.bone("head").add(wrapper);
