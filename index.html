@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/wooden-pose-walk/favicon.svg" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Mannequin Walk — Wooden Figure Study</title>
+    <script type="module" crossorigin src="/wooden-pose-walk/assets/index-D_e6bFwz.js"></script>
+    <link rel="stylesheet" crossorigin href="/wooden-pose-walk/assets/index-BQ1L6zyX.css">
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage"></canvas>
+
+      <header class="hud hud-top">
+        <p class="eyebrow">Figure study</p>
+        <h1>Wooden mannequin</h1>
+        <p class="hint" id="hint">Tap the floor to walk there · Drag to look around</p>
+      </header>
+
+      <aside class="hud hud-panel">
+        <label class="toggle">
+          <input type="checkbox" id="toggle-ik" checked />
+          <span>Two-bone leg IK</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-lock" checked />
+          <span>Toe foot lock</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-clamp" checked />
+          <span>Ground height clamp</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-markers" />
+          <span>Show contact markers</span>
+        </label>
+        <p class="status" id="status">Idle · both toes planted</p>
+      </aside>
+
+      <footer class="hud hud-foot">
+        IK + locking after
+        <a
+          href="https://theorangeduck.com/page/inverse-kinematics-foot-locking"
+          target="_blank"
+          rel="noreferrer"
+          >Daniel Holden / Orange Duck</a
+        >
+      </footer>
+    </div>
+  </body>
+</html>
