@@ -2,21 +2,15 @@ import {
   BoxGeometry,
   CylinderGeometry,
   Group,
-  LatheGeometry,
   Mesh,
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
   SphereGeometry,
-  Vector2,
   Vector3,
 } from "three";
 import { boneOrientTowards, twoBoneInverseKinematics, type Xform } from "./ik";
-import {
-  createCloakMaterial,
-  createJointMaterial,
-  createWoodMaterial,
-} from "./wood";
+import { createJointMaterial, createWoodMaterial } from "./wood";
 
 export type BoneName =
   | "root"
@@ -74,34 +68,6 @@ const _heelX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeEndX = { translation: new Vector3(), rotation: new Quaternion() };
 
-function foldCloak(
-  geometry: LatheGeometry,
-  topY: number,
-  bottomY: number,
-): LatheGeometry {
-  const pos = geometry.attributes.position;
-  const v = new Vector3();
-  const span = Math.max(topY - bottomY, 1e-4);
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const angle = Math.atan2(v.z, v.x);
-    const flare = Math.max(0, (topY - v.y) / span);
-    const folds =
-      Math.sin(angle * 7) * 0.02 * flare +
-      Math.sin(angle * 3.5 + 0.6) * 0.012 * flare;
-    const radius = Math.hypot(v.x, v.z);
-    if (radius > 1e-5) {
-      const scale = (radius + folds) / radius;
-      v.x *= scale;
-      v.z *= scale;
-    }
-    pos.setXYZ(i, v.x, v.y, v.z);
-  }
-  pos.needsUpdate = true;
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
 function addMesh(parent: Object3D, mesh: Mesh): Mesh {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -145,7 +111,6 @@ export class WoodenMannequin {
     roughness: 0.48,
   });
   private readonly joint = createJointMaterial();
-  private readonly cloak = createCloakMaterial();
 
   constructor() {
     this.root.name = "mannequin";
@@ -331,51 +296,12 @@ export class WoodenMannequin {
 
     this.buildArm("left", chest);
     this.buildArm("right", chest);
-    this.buildCloak(chest, neck);
     this.buildLeg("left", pelvis);
     this.buildLeg("right", pelvis);
 
     for (const [name, object] of this.bones) {
       this.restLocal.set(name, object.quaternion.clone());
     }
-  }
-
-  private buildCloak(chest: Object3D, neck: Object3D): void {
-    const open = 1.05;
-    const phiStart = Math.PI / 2 + open / 2;
-    const phiLength = Math.PI * 2 - open;
-
-    const drape = [
-      new Vector2(0.075, 0.29),
-      new Vector2(0.13, 0.275),
-      new Vector2(0.23, 0.21),
-      new Vector2(0.275, 0.08),
-      new Vector2(0.3, -0.08),
-      new Vector2(0.33, -0.32),
-      new Vector2(0.38, -0.58),
-      new Vector2(0.44, -0.86),
-    ];
-    const bodyGeo = foldCloak(
-      new LatheGeometry(drape, 48, phiStart, phiLength),
-      0.29,
-      -0.86,
-    );
-    const body = addMesh(chest, new Mesh(bodyGeo, this.cloak));
-    body.name = "cloak";
-    body.position.set(0, 0, -0.012);
-
-    const collar = [
-      new Vector2(0.07, -0.01),
-      new Vector2(0.095, 0.012),
-      new Vector2(0.11, 0.04),
-      new Vector2(0.1, 0.07),
-    ];
-    const cowl = addMesh(
-      neck,
-      new Mesh(new LatheGeometry(collar, 28, phiStart, phiLength), this.cloak),
-    );
-    cowl.name = "cloakCollar";
-    cowl.position.set(0, -0.01, -0.01);
   }
 
   private buildArm(side: "left" | "right", chest: Object3D): void {

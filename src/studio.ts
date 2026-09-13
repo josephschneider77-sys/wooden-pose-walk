@@ -28,6 +28,7 @@ import {
   setDestination,
   steerWalker,
 } from "./locomotion";
+import { ClothCape } from "./cape";
 import { WoodenMannequin } from "./mannequin";
 import { clamp } from "./math";
 import { createWoodMaterial } from "./wood";
@@ -78,6 +79,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
+  const cape = new ClothCape(figure);
+  scene.add(cape.mesh);
 
   const walker = createWalker();
   figure.refreshWorld();
@@ -195,6 +198,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     rightMark.position.copy(rightTarget);
     leftMark.scale.setScalar(leftLock.locked ? 1.15 : 0.75);
     rightMark.scale.setScalar(rightLock.locked ? 1.15 : 0.75);
+
+    cape.update(dt, time, walker.speed, walker.yaw);
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;

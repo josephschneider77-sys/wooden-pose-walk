@@ -60,4 +60,6 @@ Recipes follow [Inverse Kinematics and Foot Locking](https://theorangeduck.com/p
 
 - Animation / IK methods: [Daniel Holden](https://theorangeduck.com/page/inverse-kinematics-foot-locking) (Orange Duck)
 - Engine: [Three.js](https://threejs.org/) (MIT)
+- Cloak: Verlet cloth from the official [three.js cloth example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_cloth.html) (MIT)
+- Cloak fabric: [ambientCG Fabric008](https://ambientcg.com/view?id=Fabric008) (CC0)
 - Character: original procedural wooden mannequin in this repo (no third-party mesh)
