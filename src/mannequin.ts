@@ -74,6 +74,34 @@ const _heelX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeEndX = { translation: new Vector3(), rotation: new Quaternion() };
 
+function foldCloak(
+  geometry: LatheGeometry,
+  topY: number,
+  bottomY: number,
+): LatheGeometry {
+  const pos = geometry.attributes.position;
+  const v = new Vector3();
+  const span = Math.max(topY - bottomY, 1e-4);
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const angle = Math.atan2(v.z, v.x);
+    const flare = Math.max(0, (topY - v.y) / span);
+    const folds =
+      Math.sin(angle * 7) * 0.02 * flare +
+      Math.sin(angle * 3.5 + 0.6) * 0.012 * flare;
+    const radius = Math.hypot(v.x, v.z);
+    if (radius > 1e-5) {
+      const scale = (radius + folds) / radius;
+      v.x *= scale;
+      v.z *= scale;
+    }
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  pos.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 function addMesh(parent: Object3D, mesh: Mesh): Mesh {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -327,10 +355,12 @@ export class WoodenMannequin {
       new Vector2(0.38, -0.58),
       new Vector2(0.44, -0.86),
     ];
-    const body = addMesh(
-      chest,
-      new Mesh(new LatheGeometry(drape, 36, phiStart, phiLength), this.cloak),
+    const bodyGeo = foldCloak(
+      new LatheGeometry(drape, 48, phiStart, phiLength),
+      0.29,
+      -0.86,
     );
+    const body = addMesh(chest, new Mesh(bodyGeo, this.cloak));
     body.name = "cloak";
     body.position.set(0, 0, -0.012);
 
