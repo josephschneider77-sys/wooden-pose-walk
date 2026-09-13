@@ -1,11 +1,14 @@
 import { Vector3 } from "three";
 
 /**
- * Verlet cloth from the official three.js MIT example
- * `examples/webgl_animation_cloth.html` (mrdoob/three.js).
+ * Verlet cloth from the official three.js MIT example, plus Drape
+ * (aatishb/drape, MIT): skip-neighbor bending springs and frictional
+ * contact. https://github.com/aatishb/drape
  */
 const DAMPING = 0.03;
 const DRAG = 1 - DAMPING;
+/** Drape restDistanceB — longer bending rest lets the sheet sag into folds. */
+const BEND_SLACK = 1.06;
 
 export class ClothParticle {
   readonly position = new Vector3();
@@ -54,12 +57,17 @@ export class VerletCloth {
       }
     }
 
-    const link = (u0: number, v0: number, u1: number, v1: number) => {
+    const link = (u0: number, v0: number, u1: number, v1: number, slack = 1) => {
       const a = this.particles[this.index(u0, v0)];
       const b = this.particles[this.index(u1, v1)];
-      this.constraints.push({ a, b, rest: a.position.distanceTo(b.position) });
+      this.constraints.push({
+        a,
+        b,
+        rest: a.position.distanceTo(b.position) * slack,
+      });
     };
 
+    // Structural (Drape "cross grain")
     for (let v = 0; v < h; v++) {
       for (let u = 0; u < w; u++) {
         link(u, v, u, v + 1);
@@ -69,16 +77,19 @@ export class VerletCloth {
     for (let v = 0; v < h; v++) link(w, v, w, v + 1);
     for (let u = 0; u < w; u++) link(u, h, u + 1, h);
 
-    // Shear springs — nicer folds than the official structural-only setup
-    const shear = Math.SQRT2;
+    // Shear (Drape "bias grain")
     for (let v = 0; v < h; v++) {
       for (let u = 0; u < w; u++) {
-        const a = this.particles[this.index(u, v)];
-        const d = this.particles[this.index(u + 1, v + 1)];
-        const b = this.particles[this.index(u + 1, v)];
-        const c = this.particles[this.index(u, v + 1)];
-        this.constraints.push({ a, b: d, rest: a.position.distanceTo(d.position) || shear * 0.05 });
-        this.constraints.push({ a: b, b: c, rest: b.position.distanceTo(c.position) || shear * 0.05 });
+        link(u, v, u + 1, v + 1);
+        link(u + 1, v, u, v + 1);
+      }
+    }
+
+    // Bending (Drape "drape") — skip-one springs for larger folds
+    for (let v = 0; v <= h; v++) {
+      for (let u = 0; u <= w; u++) {
+        if (v + 2 <= h) link(u, v, u, v + 2, BEND_SLACK);
+        if (u + 2 <= w) link(u, v, u + 2, v, BEND_SLACK);
       }
     }
   }
@@ -89,6 +100,9 @@ export class VerletCloth {
 }
 
 const _diff = new Vector3();
+const _noFriction = new Vector3();
+const _frictionPos = new Vector3();
+const _motion = new Vector3();
 
 export function satisfyConstraint(a: ClothParticle, b: ClothParticle, rest: number): void {
   _diff.subVectors(b.position, a.position);
@@ -97,4 +111,35 @@ export function satisfyConstraint(a: ClothParticle, b: ClothParticle, rest: numb
   _diff.multiplyScalar(1 - rest / dist);
   a.position.addScaledVector(_diff, 0.5);
   b.position.addScaledVector(_diff, -0.5);
+}
+
+/**
+ * Drape sphere contact: project out, then blend with last-frame
+ * position plus collider motion so the cloth can cling.
+ */
+export function collideSphereFriction(
+  particle: ClothParticle,
+  center: Vector3,
+  prevCenter: Vector3,
+  radius: number,
+  friction: number,
+  minY = -Infinity,
+): void {
+  if (particle.position.y < minY) return;
+  _diff.subVectors(particle.position, center);
+  const dist = _diff.length();
+  if (dist === 0 || dist >= radius) return;
+
+  _noFriction.copy(center).addScaledVector(_diff, radius / dist);
+  _diff.subVectors(particle.previous, center);
+  if (_diff.length() > radius) {
+    _motion.subVectors(center, prevCenter);
+    _frictionPos.copy(particle.previous).add(_motion);
+    particle.position
+      .copy(_frictionPos)
+      .multiplyScalar(friction)
+      .addScaledVector(_noFriction, 1 - friction);
+  } else {
+    particle.position.copy(_noFriction);
+  }
 }
