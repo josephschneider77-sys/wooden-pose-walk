@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
 
 /**
  * Verlet cloth from the official three.js MIT example, plus Drape
@@ -142,4 +142,80 @@ export function collideSphereFriction(
   } else {
     particle.position.copy(_noFriction);
   }
+}
+
+const _seg = new Vector3();
+const _closest = new Vector3();
+const _push = new Vector3();
+const _toA = new Vector3();
+const _local = new Vector3();
+const _delta = new Vector3();
+const _invRot = new Quaternion();
+
+/** Hard projection so cloth cannot remain inside a sphere. */
+export function projectOutSphere(particle: ClothParticle, center: Vector3, radius: number): void {
+  _diff.subVectors(particle.position, center);
+  const dist = _diff.length();
+  if (dist === 0) {
+    particle.position.x += radius;
+    return;
+  }
+  if (dist >= radius) return;
+  const lift = radius - dist;
+  _push.copy(_diff).multiplyScalar(1 / dist);
+  particle.position.addScaledVector(_push, lift);
+  particle.previous.addScaledVector(_push, lift);
+}
+
+/** Hard projection out of a bone capsule (segment + radius). */
+export function projectOutCapsule(
+  particle: ClothParticle,
+  a: Vector3,
+  b: Vector3,
+  radius: number,
+): void {
+  _seg.subVectors(b, a);
+  const lenSq = _seg.lengthSq();
+  let t = 0;
+  if (lenSq > 1e-10) {
+    t = Math.min(1, Math.max(0, _toA.subVectors(particle.position, a).dot(_seg) / lenSq));
+  }
+  _closest.copy(a).addScaledVector(_seg, t);
+  projectOutSphere(particle, _closest, radius);
+}
+
+/**
+ * Hard projection out of an oriented box. Pushes along the shallowest
+ * face so cloth stays on the exterior of torso / pelvis / head volumes.
+ */
+export function projectOutBox(
+  particle: ClothParticle,
+  center: Vector3,
+  rotation: Quaternion,
+  hx: number,
+  hy: number,
+  hz: number,
+): void {
+  _invRot.copy(rotation).invert();
+  _local.copy(particle.position).sub(center).applyQuaternion(_invRot);
+  const ax = Math.abs(_local.x);
+  const ay = Math.abs(_local.y);
+  const az = Math.abs(_local.z);
+  if (ax >= hx || ay >= hy || az >= hz) return;
+
+  const dx = hx - ax;
+  const dy = hy - ay;
+  const dz = hz - az;
+  if (dx <= dy && dx <= dz) {
+    _local.x = (_local.x >= 0 ? 1 : -1) * hx;
+  } else if (dy <= dz) {
+    _local.y = (_local.y >= 0 ? 1 : -1) * hy;
+  } else {
+    _local.z = (_local.z >= 0 ? 1 : -1) * hz;
+  }
+
+  _delta.copy(_local).applyQuaternion(rotation).add(center);
+  _delta.sub(particle.position);
+  particle.position.add(_delta);
+  particle.previous.add(_delta);
 }

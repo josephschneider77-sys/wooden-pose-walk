@@ -9,7 +9,8 @@ import {
   Vector3,
 } from "three";
 import type { WoodenMannequin } from "./mannequin";
-import { collideSphereFriction, satisfyConstraint, VerletCloth } from "./verletCloth";
+import { BodyShell } from "./bodyShell";
+import { satisfyConstraint, VerletCloth } from "./verletCloth";
 
 const WIDTH_SEGS = 18;
 const HEIGHT_SEGS = 22;
@@ -19,7 +20,9 @@ const GRAVITY = new Vector3(0, -22, 0);
 const TIMESTEP = 1 / 60;
 const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 const ITERATIONS = 8;
-const FRICTION = 0.48;
+const FRICTION = 0.55;
+const SHELL_PASSES = 4;
+const SKIN = 0.012;
 const FLOOR_Y = 0.03;
 const COLLAR_A0 = Math.PI * 0.4;
 const COLLAR_A1 = Math.PI * 1.6;
@@ -27,15 +30,12 @@ const COLLAR_A1 = Math.PI * 1.6;
 const _force = new Vector3();
 const _normal = new Vector3();
 const _wind = new Vector3();
-const _back = new Vector3();
 const _forward = new Vector3();
-const _left = new Vector3();
-const _right = new Vector3();
 const _neck = new Vector3();
 const _chest = new Vector3();
-const _pelvis = new Vector3();
 const _hit = new Vector3();
 const _yoke = new Vector3();
+const _side = new Vector3();
 
 function bodyFrame(
   figure: WoodenMannequin,
@@ -80,11 +80,7 @@ export class ClothCape {
   private readonly figure: WoodenMannequin;
   private readonly cloth: VerletCloth;
   private readonly geometry: PlaneGeometry;
-  private readonly prevLeft = new Vector3();
-  private readonly prevRight = new Vector3();
-  private readonly prevNeck = new Vector3();
-  private readonly prevChest = new Vector3();
-  private readonly prevPelvis = new Vector3();
+  private readonly shell = new BodyShell();
 
   constructor(figure: WoodenMannequin) {
     this.figure = figure;
@@ -110,13 +106,12 @@ export class ClothCape {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 4;
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -4;
+    material.polygonOffsetUnits = -4;
+    material.depthWrite = true;
     this.loadFabric(material);
-
-    this.prevLeft.copy(this.figure.worldPos("leftShoulder"));
-    this.prevRight.copy(this.figure.worldPos("rightShoulder"));
-    this.prevNeck.copy(this.figure.worldPos("neck"));
-    this.prevChest.copy(this.figure.worldPos("chest"));
-    this.prevPelvis.copy(this.figure.worldPos("pelvis"));
 
     this.pinCollar();
     for (let i = 0; i < 90; i++) this.step(1 / 60, 0, 0, 0);
@@ -181,52 +176,50 @@ export class ClothCape {
       p.integrate(timesq);
     }
 
+    this.shell.refresh(this.figure);
+    const pinned = this.cloth.w + 1;
+
     for (let n = 0; n < ITERATIONS; n++) {
       for (const c of this.cloth.constraints) {
         satisfyConstraint(c.a, c.b, c.rest);
       }
       this.pinCollar();
+      this.shell.resolve(particles, pinned);
     }
 
     this.keepOnBack();
-    this.figure.worldPos("leftShoulder", _left);
-    this.figure.worldPos("rightShoulder", _right);
-    this.figure.worldPos("neck", _neck);
-    this.figure.worldPos("chest", _chest);
-    this.figure.worldPos("pelvis", _pelvis);
+    this.shell.resolve(particles, pinned);
     for (const p of particles) {
-      collideSphereFriction(p, _left, this.prevLeft, 0.078, FRICTION);
-      collideSphereFriction(p, _right, this.prevRight, 0.078, FRICTION);
-      collideSphereFriction(p, _neck, this.prevNeck, 0.055, FRICTION);
-      collideSphereFriction(p, _chest, this.prevChest, 0.132, FRICTION);
-      collideSphereFriction(p, _pelvis, this.prevPelvis, 0.116, FRICTION, _pelvis.y - 0.12);
       if (p.position.y < FLOOR_Y) {
         p.position.y = FLOOR_Y;
         p.previous.x += (p.position.x - p.previous.x) * FRICTION;
         p.previous.z += (p.position.z - p.previous.z) * FRICTION;
       }
     }
-    this.prevLeft.copy(_left);
-    this.prevRight.copy(_right);
-    this.prevNeck.copy(_neck);
-    this.prevChest.copy(_chest);
-    this.prevPelvis.copy(_pelvis);
 
     this.pinCollar();
     this.softYoke();
+    for (let n = 0; n < SHELL_PASSES; n++) {
+      this.keepOnBack();
+      this.shell.resolve(particles, pinned);
+    }
+    this.pinCollar();
   }
 
   private keepOnBack(): void {
     const yaw = this.figure.bone("root").rotation.y;
     _forward.set(Math.sin(yaw), 0, Math.cos(yaw));
-    _back.copy(_forward).multiplyScalar(-1);
+    _side.set(Math.cos(yaw), 0, -Math.sin(yaw));
     this.figure.worldPos("chest", _chest);
-    const plane = _chest.clone().addScaledVector(_back, 0.02);
-    for (const p of this.cloth.particles) {
-      _hit.subVectors(p.position, plane);
-      const intoBody = _hit.dot(_forward);
-      if (intoBody > -0.05) {
-        p.position.addScaledVector(_forward, -0.05 - intoBody);
+    for (let i = this.cloth.w + 1; i < this.cloth.particles.length; i++) {
+      const p = this.cloth.particles[i];
+      _hit.subVectors(p.position, _chest);
+      const lateral = Math.abs(_hit.dot(_side));
+      if (lateral > 0.14) continue;
+      const intoBody = _hit.dot(_forward) + 0.05;
+      if (intoBody > 0) {
+        p.position.addScaledVector(_forward, -intoBody - 0.02);
+        p.previous.addScaledVector(_forward, -intoBody - 0.02);
       }
     }
   }
@@ -256,5 +249,15 @@ export class ClothCape {
     }
     pos.needsUpdate = true;
     this.geometry.computeVertexNormals();
+    const nrm = this.geometry.attributes.normal;
+    for (let i = 0; i < this.cloth.particles.length; i++) {
+      pos.setXYZ(
+        i,
+        pos.getX(i) + nrm.getX(i) * SKIN,
+        pos.getY(i) + nrm.getY(i) * SKIN,
+        pos.getZ(i) + nrm.getZ(i) * SKIN,
+      );
+    }
+    pos.needsUpdate = true;
   }
 }
