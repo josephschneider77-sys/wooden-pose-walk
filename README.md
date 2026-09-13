@@ -13,8 +13,12 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 - **Toe foot lock** — lock the toe to its contact point while the foot is planted; unlock with distance / contact rules; cubic inertialization blends
 - **Ground height clamp** — keep heels / toes from sinking
 - **Show contact markers** — gold / blue dots on the current toe targets
+- **Image pipeline** — HDR compose: contact AO → highlight bloom → ACES once. Turn off for the no-post baseline
+- **Contact AO** — GTAO around joints, cloak folds, and floor contact
+- **Highlight bloom** — window and specular peaks only (high threshold, before tone map)
+- **AO debug view** — raw denoised AO
 
-Turn IK or lock off to compare against the raw procedural walk cycle.
+Turn IK or lock off to compare against the raw procedural walk cycle. The figure should still read as carved walnut / ebony with the pipeline off.
 
 ## Run locally
 
@@ -63,3 +67,4 @@ Recipes follow [Inverse Kinematics and Foot Locking](https://theorangeduck.com/p
 - Cloak: Verlet cloth from the official [three.js cloth example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_cloth.html) (MIT)
 - Cloak fabric: [ambientCG Fabric008](https://ambientcg.com/view?id=Fabric008) (CC0)
 - Character: original procedural wooden mannequin in this repo (no third-party mesh)
+- Look: walnut / ebony / plaster PBR identities and studio lighting from [scottstts/Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) (`threejs-procedural-materials`, `threejs-shadow-systems`, `threejs-image-pipeline`)

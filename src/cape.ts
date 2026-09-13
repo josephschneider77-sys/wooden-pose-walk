@@ -94,7 +94,9 @@ export class ClothCape {
       roughness: 0.94,
       metalness: 0,
       clearcoat: 0,
-      sheen: 0,
+      sheen: 0.22,
+      sheenRoughness: 0.72,
+      sheenColor: "#141414",
       side: DoubleSide,
     });
     this.mesh = new Mesh(this.geometry, material);

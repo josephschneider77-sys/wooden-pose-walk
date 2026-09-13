@@ -102,13 +102,18 @@ export class WoodenMannequin {
   readonly toeMinHeight: number;
   readonly toeEndMinHeight: number;
 
-  private readonly wood = createWoodMaterial({ seed: 14, repeatX: 1.1, repeatY: 2.4 });
+  private readonly wood = createWoodMaterial({
+    kind: "walnut",
+    seed: 14,
+    repeatX: 1.1,
+    repeatY: 2.4,
+  });
   private readonly darkWood = createWoodMaterial({
+    kind: "beech",
     base: "#a56b34",
     seed: 41,
     repeatX: 1.6,
     repeatY: 1.2,
-    roughness: 0.48,
   });
   private readonly joint = createJointMaterial();
 

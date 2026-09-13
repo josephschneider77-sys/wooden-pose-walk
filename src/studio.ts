@@ -6,10 +6,12 @@ import {
   Group,
   HemisphereLight,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
-  PCFShadowMap,
+  PCFSoftShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
+  PMREMGenerator,
   Raycaster,
   RingGeometry,
   Scene,
@@ -20,6 +22,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createFootLock, updateFootLockingState } from "./footLock";
 import {
   createWalker,
@@ -31,7 +34,8 @@ import {
 import { ClothCape } from "./cape";
 import { WoodenMannequin } from "./mannequin";
 import { clamp } from "./math";
-import { createWoodMaterial } from "./wood";
+import { createImagePipeline } from "./pipeline";
+import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
 const ROOM = 8.4;
 const SOFTENING = 0.012;
@@ -44,6 +48,10 @@ interface Toggles {
   lock: boolean;
   clampHeight: boolean;
   markers: boolean;
+  pipeline: boolean;
+  ao: boolean;
+  bloom: boolean;
+  aoDebug: boolean;
 }
 
 export function startStudio(canvas: HTMLCanvasElement): void {
@@ -56,13 +64,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFShadowMap;
+  renderer.shadowMap.type = PCFSoftShadowMap;
 
   const scene = new Scene();
-  scene.background = new Color("#e7d2b4");
-  scene.fog = new Fog("#e7d2b4", 11, 26);
+  scene.background = new Color("#e4c9a8");
+  scene.fog = new Fog("#e4c9a8", 12, 28);
+  const pmrem = new PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.32;
+  pmrem.dispose();
 
   const camera = new PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 60);
   camera.position.set(3.4, 2.15, 4.6);
@@ -75,7 +87,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   controls.maxDistance = 9;
   controls.target.set(0, 0.95, 0);
 
-  buildRoom(scene);
+  const key = buildRoom(scene);
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
@@ -123,10 +135,13 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
   });
 
+  const pipeline = createImagePipeline(renderer, scene, camera);
+
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    pipeline.setSize(window.innerWidth, window.innerHeight);
   });
 
   const follow = new Vector3();
@@ -205,6 +220,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     follow.y += 0.08;
     controls.target.lerp(follow, 1 - Math.exp(-3.2 * dt));
     controls.update();
+    snapKeyShadow(key, follow);
     targetMark.rotation.y = time * 0.7;
 
     status.textContent = describeGait(
@@ -215,7 +231,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       toggles.lock,
     );
 
-    renderer.render(scene, camera);
+    pipeline.render(toggles.pipeline, toggles.ao, toggles.bloom, toggles.aoDebug);
     requestAnimationFrame(tick);
   };
 
@@ -246,12 +262,20 @@ function bindToggles(): Toggles {
     lock: true,
     clampHeight: true,
     markers: false,
+    pipeline: true,
+    ao: true,
+    bloom: true,
+    aoDebug: false,
   };
   const map: Array<[string, keyof Toggles]> = [
     ["#toggle-ik", "ik"],
     ["#toggle-lock", "lock"],
     ["#toggle-clamp", "clampHeight"],
     ["#toggle-markers", "markers"],
+    ["#toggle-pipeline", "pipeline"],
+    ["#toggle-ao", "ao"],
+    ["#toggle-bloom", "bloom"],
+    ["#toggle-ao-debug", "aoDebug"],
   ];
   for (const [selector, key] of map) {
     const input = document.querySelector(selector) as HTMLInputElement;
@@ -263,14 +287,12 @@ function bindToggles(): Toggles {
   return toggles;
 }
 
-function buildRoom(scene: Scene): void {
+function buildRoom(scene: Scene): DirectionalLight {
   const floorMat = createWoodMaterial({
-    base: "#b88852",
+    kind: "floor",
     seed: 7,
     repeatX: 8,
     repeatY: 8,
-    roughness: 0.62,
-    clearcoat: 0.18,
   });
   const floor = new Mesh(new PlaneGeometry(28, 28), floorMat);
   floor.rotation.x = -Math.PI / 2;
@@ -279,7 +301,7 @@ function buildRoom(scene: Scene): void {
 
   const tape = new MeshPhysicalMaterial({
     color: "#d8c4a0",
-    roughness: 0.55,
+    roughness: 0.92,
     metalness: 0,
   });
   const ring = new Mesh(new RingGeometry(2.15, 2.22, 64), tape);
@@ -291,11 +313,7 @@ function buildRoom(scene: Scene): void {
   inner.position.y = 0.004;
   scene.add(inner);
 
-  const wallMat = new MeshPhysicalMaterial({
-    color: "#f3e2c6",
-    roughness: 0.9,
-    metalness: 0,
-  });
+  const wallMat = createPlasterMaterial();
   const back = new Mesh(new PlaneGeometry(20, 6.5), wallMat);
   back.position.set(0, 3.1, -10);
   back.receiveShadow = true;
@@ -306,23 +324,60 @@ function buildRoom(scene: Scene): void {
   left.receiveShadow = true;
   scene.add(left);
 
-  const hemi = new HemisphereLight("#fff4e4", "#8b6a44", 1.05);
+  const windowGlow = new Mesh(
+    new PlaneGeometry(2.4, 3.5),
+    new MeshBasicMaterial({
+      color: new Color(3.1, 2.7, 2.15),
+    }),
+  );
+  windowGlow.position.set(-9.94, 3.15, 1.15);
+  windowGlow.rotation.y = Math.PI / 2;
+  scene.add(windowGlow);
+
+  const frame = createWoodMaterial({ kind: "ebony", seed: 8, size: 256 });
+  const sash = new Mesh(new PlaneGeometry(2.62, 3.72), frame);
+  sash.position.set(-9.97, 3.15, 1.15);
+  sash.rotation.y = Math.PI / 2;
+  sash.receiveShadow = true;
+  scene.add(sash);
+
+  const hemi = new HemisphereLight("#fff4e4", "#7a5634", 0.48);
   scene.add(hemi);
-  const key = new DirectionalLight("#fff1d6", 1.85);
-  key.position.set(4.5, 7.2, 3.5);
+
+  const key = new DirectionalLight("#fff1d6", 1.55);
+  key.position.set(5.1, 7.4, 3.2);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 22;
-  key.shadow.camera.left = -8;
-  key.shadow.camera.right = 8;
-  key.shadow.camera.top = 8;
-  key.shadow.camera.bottom = -8;
-  key.shadow.bias = -0.0004;
+  key.shadow.camera.near = 0.8;
+  key.shadow.camera.far = 24;
+  key.shadow.camera.left = -6;
+  key.shadow.camera.right = 6;
+  key.shadow.camera.top = 6;
+  key.shadow.camera.bottom = -6;
+  key.shadow.bias = -0.00028;
+  key.shadow.normalBias = 0.022;
   scene.add(key);
-  const fill = new DirectionalLight("#cfe4ff", 0.35);
-  fill.position.set(-5, 3.2, -2);
+  scene.add(key.target);
+
+  const fill = new DirectionalLight("#cfe4ff", 0.28);
+  fill.position.set(-5.4, 3.4, -2.2);
   scene.add(fill);
+
+  const rim = new DirectionalLight("#ffe4b8", 0.42);
+  rim.position.set(-2.2, 4.6, -5.4);
+  scene.add(rim);
+
+  return key;
+}
+
+function snapKeyShadow(key: DirectionalLight, follow: Vector3): void {
+  const extent = 6;
+  const texel = (extent * 2) / key.shadow.mapSize.x;
+  const x = Math.round(follow.x / texel) * texel;
+  const z = Math.round(follow.z / texel) * texel;
+  key.target.position.set(x, 0.15, z);
+  key.position.set(x + 5.1, 7.4, z + 3.2);
+  key.target.updateMatrixWorld();
 }
 
 function makeTargetMark(): Group {
