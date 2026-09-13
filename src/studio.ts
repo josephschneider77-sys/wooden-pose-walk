@@ -102,7 +102,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(scene, figure);
   const pickList = figure.pickables();
-  const restHint = "Walk to the beret or sunglasses on the lawn";
+  const restHint = "Walk to the beret, sunglasses, or shoes on the lawn";
 
   const walker = createWalker();
   figure.refreshWorld();
@@ -232,6 +232,22 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   canvas.addEventListener("pointerup", (event) => {
     if (grab && event.pointerId === grab.pointerId) {
+      if (!pointerState.moved) {
+        setPointer(event);
+        raycaster.setFromCamera(pointer, camera);
+        const tapWear = wardrobe.hit(raycaster);
+        if (tapWear?.worn) {
+          hint.textContent = wardrobe.takeOff(tapWear.id) ?? restHint;
+          grab = null;
+          controls.enabled = true;
+          try {
+            canvas.releasePointerCapture(event.pointerId);
+          } catch {
+            // capture may already be released
+          }
+          return;
+        }
+      }
       hint.textContent = `Holding the ${limbLabel(grab.id)}`;
       grab = null;
       controls.enabled = true;

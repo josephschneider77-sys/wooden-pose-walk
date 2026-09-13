@@ -1,4 +1,5 @@
 import {
+  BoxGeometry,
   CylinderGeometry,
   Group,
   Mesh,
@@ -11,8 +12,8 @@ import {
 import type { Object3D, Raycaster, Scene } from "three";
 import type { WoodenMannequin } from "./mannequin";
 
-export type WearSlot = "head" | "face";
-export type WearId = "beret" | "sunglasses";
+export type WearSlot = "head" | "face" | "feet";
+export type WearId = "beret" | "sunglasses" | "shoes";
 
 const COLLECT_RANGE = 0.62;
 const BOB = 0.014;
@@ -46,7 +47,20 @@ const SPECS: WearSpec[] = [
     wearPos: new Vector3(0, 0.058, 0.1),
     wearRot: new Vector3(0.02, 0, 0),
   },
+  {
+    id: "shoes",
+    slot: "feet",
+    title: "shoes",
+    found: "Found a pair of shoes",
+    lawn: new Vector3(0.2, 0.072, 2.35),
+    wearPos: new Vector3(0, 0, 0),
+    wearRot: new Vector3(0, 0, 0),
+  },
 ];
+
+const SHOE_LAWN_LEFT = new Vector3(-0.09, 0, 0);
+const SHOE_LAWN_RIGHT = new Vector3(0.09, 0, 0);
+const SHOE_WEAR = new Vector3(0, 0, 0);
 
 export interface WearHit {
   id: WearId;
@@ -117,7 +131,7 @@ export class LawnWardrobe {
       this.figure.root.getWorldPosition(this.scratch);
       occupant.drop(this.scene, this.scratch, this.figure.bone("root").rotation.y);
     }
-    item.attach(this.figure.bone("head"));
+    item.attach(this.figure);
     return item.spec.found;
   }
 }
@@ -129,11 +143,22 @@ class WearItem {
   readonly lawn: Vector3;
   worn = false;
   private readonly glint: Mesh;
+  private readonly leftShoe: Group | null = null;
+  private readonly rightShoe: Group | null = null;
 
   constructor(spec: WearSpec) {
     this.spec = spec;
     this.lawn = spec.lawn.clone();
-    this.root = spec.id === "beret" ? buildBeret() : buildSunglasses();
+    if (spec.id === "beret") this.root = buildBeret();
+    else if (spec.id === "sunglasses") this.root = buildSunglasses();
+    else {
+      this.root = new Group();
+      this.leftShoe = buildShoe(1);
+      this.rightShoe = buildShoe(-1);
+      this.leftShoe.position.copy(SHOE_LAWN_LEFT);
+      this.rightShoe.position.copy(SHOE_LAWN_RIGHT);
+      this.root.add(this.leftShoe, this.rightShoe);
+    }
     this.root.name = spec.id;
     this.root.position.copy(this.lawn);
     this.root.traverse((object) => {
@@ -145,7 +170,7 @@ class WearItem {
       new SphereGeometry(0.018, 10, 8),
       new MeshBasicMaterial({ color: "#f0d48a" }),
     );
-    this.glint.position.set(0.02, 0.08, 0.03);
+    this.glint.position.set(0.02, spec.id === "shoes" ? 0.1 : 0.08, 0.03);
     this.root.add(this.glint);
     this.pickMeshes.push(this.glint);
   }
@@ -163,22 +188,47 @@ class WearItem {
     this.glint.scale.setScalar(pulse);
   }
 
-  attach(head: Object3D): void {
+  attach(figure: WoodenMannequin): void {
+    this.glint.visible = false;
+    if (this.leftShoe && this.rightShoe) {
+      this.root.removeFromParent();
+      this.leftShoe.removeFromParent();
+      this.rightShoe.removeFromParent();
+      this.leftShoe.position.copy(SHOE_WEAR);
+      this.rightShoe.position.copy(SHOE_WEAR);
+      this.leftShoe.rotation.set(0, 0, 0);
+      this.rightShoe.rotation.set(0, 0, 0);
+      figure.bone("leftHeel").add(this.leftShoe);
+      figure.bone("rightHeel").add(this.rightShoe);
+      this.worn = true;
+      return;
+    }
     this.root.removeFromParent();
     this.root.position.copy(this.spec.wearPos);
     this.root.rotation.set(this.spec.wearRot.x, this.spec.wearRot.y, this.spec.wearRot.z);
-    this.glint.visible = false;
-    head.add(this.root);
+    figure.bone("head").add(this.root);
     this.worn = true;
   }
 
   drop(scene: Scene, figurePos: Vector3, yaw: number): void {
-    this.root.removeFromParent();
-    const side = this.spec.id === "beret" ? 0.42 : -0.42;
+    if (this.leftShoe && this.rightShoe) {
+      this.leftShoe.removeFromParent();
+      this.rightShoe.removeFromParent();
+      this.leftShoe.position.copy(SHOE_LAWN_LEFT);
+      this.rightShoe.position.copy(SHOE_LAWN_RIGHT);
+      this.leftShoe.rotation.set(0, 0, 0);
+      this.rightShoe.rotation.set(0, 0, 0);
+      this.root.add(this.leftShoe, this.rightShoe);
+    } else {
+      this.root.removeFromParent();
+    }
+    const along = this.spec.id === "shoes" ? 0.55 : this.spec.id === "beret" ? 0.42 : -0.42;
+    const side = this.spec.id === "shoes" ? 0 : along;
+    const forward = this.spec.id === "shoes" ? along : 0;
     this.lawn.set(
-      figurePos.x + Math.cos(yaw) * side,
+      figurePos.x + Math.cos(yaw) * side + Math.sin(yaw) * forward,
       this.spec.lawn.y,
-      figurePos.z + Math.sin(yaw) * side,
+      figurePos.z + Math.sin(yaw) * side + Math.cos(yaw) * forward,
     );
     this.root.position.copy(this.lawn);
     this.root.rotation.set(0, yaw, 0);
@@ -261,5 +311,44 @@ function buildSunglasses(): Group {
   };
   temple(-0.058);
   temple(0.058);
+  return group;
+}
+
+function leather(): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    color: "#3d2418",
+    roughness: 0.58,
+    metalness: 0.05,
+    sheen: 0.22,
+    sheenColor: "#6b4030",
+    sheenRoughness: 0.55,
+  });
+}
+
+function soleRubber(): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    color: "#1a1410",
+    roughness: 0.88,
+    metalness: 0,
+  });
+}
+
+function buildShoe(sign: number): Group {
+  const group = new Group();
+  const hide = leather();
+  const sole = soleRubber();
+  const bottom = add(group, new Mesh(new BoxGeometry(0.086, 0.014, 0.228), sole));
+  bottom.position.set(0, -0.061, 0.072);
+  const heel = add(group, new Mesh(new BoxGeometry(0.082, 0.022, 0.058), sole));
+  heel.position.set(0, -0.068, -0.012);
+  const vamp = add(group, new Mesh(new BoxGeometry(0.08, 0.048, 0.132), hide));
+  vamp.position.set(0, -0.03, 0.078);
+  const toe = add(group, new Mesh(new SphereGeometry(0.038, 16, 12), hide));
+  toe.scale.set(1.08, 0.68, 1.15);
+  toe.position.set(0, -0.032, 0.168);
+  const collar = add(group, new Mesh(new CylinderGeometry(0.03, 0.034, 0.036, 16), hide));
+  collar.position.set(0, -0.002, 0.012);
+  const lace = add(group, new Mesh(new BoxGeometry(0.012, 0.006, 0.05), sole));
+  lace.position.set(sign * 0.002, -0.006, 0.07);
   return group;
 }
