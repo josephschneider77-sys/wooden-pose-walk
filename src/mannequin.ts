@@ -2,15 +2,21 @@ import {
   BoxGeometry,
   CylinderGeometry,
   Group,
+  LatheGeometry,
   Mesh,
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
   SphereGeometry,
+  Vector2,
   Vector3,
 } from "three";
 import { boneOrientTowards, twoBoneInverseKinematics, type Xform } from "./ik";
-import { createJointMaterial, createWoodMaterial } from "./wood";
+import {
+  createCloakMaterial,
+  createJointMaterial,
+  createWoodMaterial,
+} from "./wood";
 
 export type BoneName =
   | "root"
@@ -111,6 +117,7 @@ export class WoodenMannequin {
     roughness: 0.48,
   });
   private readonly joint = createJointMaterial();
+  private readonly cloak = createCloakMaterial();
 
   constructor() {
     this.root.name = "mannequin";
@@ -296,12 +303,49 @@ export class WoodenMannequin {
 
     this.buildArm("left", chest);
     this.buildArm("right", chest);
+    this.buildCloak(chest, neck);
     this.buildLeg("left", pelvis);
     this.buildLeg("right", pelvis);
 
     for (const [name, object] of this.bones) {
       this.restLocal.set(name, object.quaternion.clone());
     }
+  }
+
+  private buildCloak(chest: Object3D, neck: Object3D): void {
+    const open = 1.05;
+    const phiStart = Math.PI / 2 + open / 2;
+    const phiLength = Math.PI * 2 - open;
+
+    const drape = [
+      new Vector2(0.075, 0.29),
+      new Vector2(0.13, 0.275),
+      new Vector2(0.23, 0.21),
+      new Vector2(0.275, 0.08),
+      new Vector2(0.3, -0.08),
+      new Vector2(0.33, -0.32),
+      new Vector2(0.38, -0.58),
+      new Vector2(0.44, -0.86),
+    ];
+    const body = addMesh(
+      chest,
+      new Mesh(new LatheGeometry(drape, 36, phiStart, phiLength), this.cloak),
+    );
+    body.name = "cloak";
+    body.position.set(0, 0, -0.012);
+
+    const collar = [
+      new Vector2(0.07, -0.01),
+      new Vector2(0.095, 0.012),
+      new Vector2(0.11, 0.04),
+      new Vector2(0.1, 0.07),
+    ];
+    const cowl = addMesh(
+      neck,
+      new Mesh(new LatheGeometry(collar, 28, phiStart, phiLength), this.cloak),
+    );
+    cowl.name = "cloakCollar";
+    cowl.position.set(0, -0.01, -0.01);
   }
 
   private buildArm(side: "left" | "right", chest: Object3D): void {

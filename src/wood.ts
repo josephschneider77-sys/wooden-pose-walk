@@ -1,6 +1,7 @@
 import {
   CanvasTexture,
   Color,
+  DoubleSide,
   MeshPhysicalMaterial,
   RepeatWrapping,
   SRGBColorSpace,
@@ -112,5 +113,69 @@ export function createJointMaterial(): MeshPhysicalMaterial {
     repeatY: 0.8,
     roughness: 0.32,
     clearcoat: 0.55,
+  });
+}
+
+function paintBlackCloth(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): void {
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(0, 0, width, height);
+
+  for (let y = 0; y < height; y += 2) {
+    ctx.fillStyle = y % 4 === 0 ? "#111111" : "#070707";
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(0, y, width, 1);
+  }
+  for (let x = 0; x < width; x += 2) {
+    ctx.fillStyle = x % 4 === 0 ? "#121212" : "#080808";
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(x, 0, 1, height);
+  }
+
+  ctx.globalAlpha = 0.22;
+  for (let i = 0; i < 9; i++) {
+    const x = 40 + i * 52;
+    const grad = ctx.createLinearGradient(x - 18, 0, x + 18, 0);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(0.5, "rgba(0,0,0,0.85)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - 18, 0, 36, height);
+  }
+
+  ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = i % 2 === 0 ? "#1a1a1a" : "#000000";
+    ctx.fillRect((i * 37) % width, (i * 61) % height, 3, 8);
+  }
+  ctx.globalAlpha = 1;
+}
+
+export function createCloakMaterial(): MeshPhysicalMaterial {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Could not create cloak cloth canvas");
+  }
+  paintBlackCloth(ctx, 512, 512);
+  const map = new CanvasTexture(canvas);
+  map.colorSpace = SRGBColorSpace;
+  map.wrapS = RepeatWrapping;
+  map.wrapT = RepeatWrapping;
+  map.repeat.set(2.2, 3.1);
+  map.anisotropy = 8;
+  return new MeshPhysicalMaterial({
+    map,
+    color: "#0d0d0d",
+    roughness: 0.98,
+    metalness: 0,
+    clearcoat: 0,
+    sheen: 0,
+    side: DoubleSide,
   });
 }
