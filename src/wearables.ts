@@ -33,9 +33,9 @@ const SPECS: WearSpec[] = [
     slot: "head",
     title: "beret",
     found: "Found a beret",
-    lawn: new Vector3(1.35, 0.055, 1.5),
-    wearPos: new Vector3(0.012, 0.186, 0.004),
-    wearRot: new Vector3(-0.22, 0.42, -0.3),
+    lawn: new Vector3(1.35, 0.07, 1.5),
+    wearPos: new Vector3(0.01, 0.228, 0.0),
+    wearRot: new Vector3(-0.16, 0.32, -0.2),
   },
   {
     id: "sunglasses",
@@ -229,13 +229,13 @@ function add(parent: Group, mesh: Mesh): Mesh {
 function buildBeret(): Group {
   const group = new Group();
   const cloth = felt();
-  const crown = add(group, new Mesh(new SphereGeometry(0.09, 28, 18), cloth));
-  crown.scale.set(1.18, 0.4, 1.18);
-  crown.position.y = 0.012;
-  const band = add(group, new Mesh(new CylinderGeometry(0.072, 0.078, 0.018, 28), cloth));
-  band.position.y = -0.01;
-  const stem = add(group, new Mesh(new SphereGeometry(0.011, 10, 8), cloth));
-  stem.position.set(0.01, 0.046, 0.006);
+  const crown = add(group, new Mesh(new SphereGeometry(0.11, 28, 18), cloth));
+  crown.scale.set(1.28, 0.46, 1.28);
+  crown.position.y = 0.016;
+  const band = add(group, new Mesh(new CylinderGeometry(0.088, 0.094, 0.02, 28), cloth));
+  band.position.y = -0.008;
+  const stem = add(group, new Mesh(new SphereGeometry(0.014, 10, 8), cloth));
+  stem.position.set(0.012, 0.058, 0.008);
   return group;
 }
 
