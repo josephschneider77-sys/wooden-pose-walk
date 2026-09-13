@@ -25,6 +25,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createFootLock, updateFootLockingState } from "./footLock";
 import {
   createWalker,
+  poseHover,
   poseMannequin,
   setDestination,
   steerWalker,
@@ -102,7 +103,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(scene, figure);
   const pickList = figure.pickables();
-  const restHint = "Walk to the beret, sunglasses, or shoes on the lawn";
+  const restHint = "Walk to finds on the lawn · jetpack flies";
 
   const walker = createWalker();
   figure.refreshWorld();
@@ -280,7 +281,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
       floorPoint.y = 0;
       setDestination(walker, floorPoint);
-      hint.textContent = "Walking there";
+      hint.textContent = wardrobe.isWorn("jetpack") ? "Flying there" : "Walking there";
     }
   });
 
@@ -330,58 +331,65 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     last = now;
     const time = now / 1000;
 
-    const { walkWeight } = steerWalker(walker, figure.root.position, dt);
-    const contacts = poseMannequin(figure, walker, walkWeight, time, {
-      leftArm: holds.has("leftArm"),
-      rightArm: holds.has("rightArm"),
-    });
-    figure.worldPos("leftToe", leftToe);
-    figure.worldPos("rightToe", rightToe);
-
-    const leftTarget = leftToe.clone();
-    const rightTarget = rightToe.clone();
-
-    updateFootLockingState(
-      leftLock,
-      leftToe,
-      contacts.leftContact && !holds.has("leftLeg"),
-      figure.toeMinHeight,
-      dt,
-      UNLOCK_DISTANCE,
-      LOCK_DISTANCE,
-      BLEND_TIME,
-    );
-    updateFootLockingState(
-      rightLock,
-      rightToe,
-      contacts.rightContact && !holds.has("rightLeg"),
-      figure.toeMinHeight,
-      dt,
-      UNLOCK_DISTANCE,
-      LOCK_DISTANCE,
-      BLEND_TIME,
-    );
-    if (!holds.has("leftLeg")) leftTarget.copy(leftLock.position);
-    if (!holds.has("rightLeg")) rightTarget.copy(rightLock.position);
-
-    if (!holds.has("leftLeg")) {
-      figure.solveLeg("left", leftTarget, {
-        enableHeightClamp: true,
-        enableHeelLookAt: true,
-        enableToeLookAt: true,
-        softening: SOFTENING,
+    const jet = wardrobe.isWorn("jetpack");
+    const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet);
+    if (flying) {
+      poseHover(figure, walker, time);
+      applyHolds(0);
+    } else {
+      const contacts = poseMannequin(figure, walker, walkWeight, time, {
+        leftArm: holds.has("leftArm"),
+        rightArm: holds.has("rightArm"),
       });
-    }
-    if (!holds.has("rightLeg")) {
-      figure.solveLeg("right", rightTarget, {
-        enableHeightClamp: true,
-        enableHeelLookAt: true,
-        enableToeLookAt: true,
-        softening: SOFTENING,
-      });
-    }
+      figure.worldPos("leftToe", leftToe);
+      figure.worldPos("rightToe", rightToe);
 
-    applyHolds(walkWeight);
+      const leftTarget = leftToe.clone();
+      const rightTarget = rightToe.clone();
+
+      updateFootLockingState(
+        leftLock,
+        leftToe,
+        contacts.leftContact && !holds.has("leftLeg"),
+        figure.toeMinHeight,
+        dt,
+        UNLOCK_DISTANCE,
+        LOCK_DISTANCE,
+        BLEND_TIME,
+      );
+      updateFootLockingState(
+        rightLock,
+        rightToe,
+        contacts.rightContact && !holds.has("rightLeg"),
+        figure.toeMinHeight,
+        dt,
+        UNLOCK_DISTANCE,
+        LOCK_DISTANCE,
+        BLEND_TIME,
+      );
+      if (!holds.has("leftLeg")) leftTarget.copy(leftLock.position);
+      if (!holds.has("rightLeg")) rightTarget.copy(rightLock.position);
+
+      if (!holds.has("leftLeg")) {
+        figure.solveLeg("left", leftTarget, {
+          enableHeightClamp: true,
+          enableHeelLookAt: true,
+          enableToeLookAt: true,
+          softening: SOFTENING,
+        });
+      }
+      if (!holds.has("rightLeg")) {
+        figure.solveLeg("right", rightTarget, {
+          enableHeightClamp: true,
+          enableHeelLookAt: true,
+          enableToeLookAt: true,
+          softening: SOFTENING,
+        });
+      }
+
+      applyHolds(walkWeight);
+    }
+    wardrobe.setThrust(flying, time);
 
     const focus = grab?.id ?? hover;
     if (focus) {

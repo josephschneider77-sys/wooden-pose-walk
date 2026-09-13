@@ -19,11 +19,13 @@ export function createWalker(): Walker {
 }
 
 const MAX_SPEED = 1.24;
+const FLY_SPEED = 2.9;
 const ACCEL = 2.6;
 const DECEL = 3.4;
 const TURN_RATE = 3.4;
 const ARRIVE = 0.2;
 const STEP_METERS = 0.72;
+const FLY_HEIGHT = 1.58;
 
 export function setDestination(walker: Walker, point: Vector3): void {
   walker.destination = point.clone();
@@ -34,10 +36,20 @@ export function steerWalker(
   walker: Walker,
   rootPosition: Vector3,
   dt: number,
-): { walkWeight: number; arrived: boolean } {
+  fly = false,
+): { walkWeight: number; arrived: boolean; flying: boolean } {
+  const airborne = fly && (walker.destination !== null || rootPosition.y > 0.08);
+  const targetY = fly && walker.destination ? FLY_HEIGHT : 0;
+  rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
+  if (!fly) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
+
   if (!walker.destination) {
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
-    return { walkWeight: saturate(walker.speed / 0.35), arrived: true };
+    return {
+      walkWeight: airborne ? 0 : saturate(walker.speed / 0.35),
+      arrived: true,
+      flying: rootPosition.y > 0.28,
+    };
   }
 
   const to = walker.destination.clone().sub(rootPosition);
@@ -46,7 +58,11 @@ export function steerWalker(
   if (distance < ARRIVE) {
     walker.destination = null;
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
-    return { walkWeight: saturate(walker.speed / 0.35), arrived: true };
+    return {
+      walkWeight: airborne ? 0 : saturate(walker.speed / 0.35),
+      arrived: true,
+      flying: rootPosition.y > 0.28,
+    };
   }
 
   const desiredYaw = Math.atan2(to.x, to.z);
@@ -55,22 +71,49 @@ export function steerWalker(
 
   const facing = 1 - saturate(Math.abs(shortestAngle(walker.yaw, desiredYaw)) / 1.2);
   const slow = saturate((distance - ARRIVE) / 0.7);
-  const targetSpeed = MAX_SPEED * facing * Math.max(0.35, slow);
+  const max = fly ? FLY_SPEED : MAX_SPEED;
+  const targetSpeed = max * (fly ? Math.max(0.55, facing) : facing * Math.max(0.35, slow));
   if (walker.speed < targetSpeed) {
     walker.speed = Math.min(targetSpeed, walker.speed + ACCEL * dt);
   } else {
     walker.speed = Math.max(targetSpeed, walker.speed - DECEL * dt);
   }
 
-  // Source gait advances a little slower than root travel so raw motion slides;
-  // toe locking is what plants the feet.
   const gaitSpeed = walker.speed * 0.8;
   walker.phase = wrap01(walker.phase + (gaitSpeed * dt) / (STEP_METERS * 2));
 
   rootPosition.x += Math.sin(walker.yaw) * walker.speed * dt;
   rootPosition.z += Math.cos(walker.yaw) * walker.speed * dt;
 
-  return { walkWeight: saturate(walker.speed / 0.42), arrived: false };
+  return {
+    walkWeight: airborne ? 0 : saturate(walker.speed / 0.42),
+    arrived: false,
+    flying: rootPosition.y > 0.28,
+  };
+}
+
+export function poseHover(figure: WoodenMannequin, walker: Walker, time: number): void {
+  figure.resetPose();
+  const lean = Math.min(0.22, walker.speed * 0.08);
+  const pelvis = figure.bone("pelvis");
+  pelvis.position.y = figure.restPelvisY + Math.sin(time * 6) * 0.02;
+  pelvis.quaternion.copy(figure.restLocal.get("pelvis")!);
+  pelvis.rotateX(-0.12 - lean);
+  figure.bone("chest").rotateX(0.08);
+  for (const side of ["left", "right"] as const) {
+    const hip = figure.bone(side === "left" ? "leftHip" : "rightHip");
+    const knee = figure.bone(side === "left" ? "leftKnee" : "rightKnee");
+    hip.quaternion.copy(figure.restLocal.get(side === "left" ? "leftHip" : "rightHip")!);
+    knee.quaternion.copy(figure.restLocal.get(side === "left" ? "leftKnee" : "rightKnee")!);
+    hip.rotateX(-0.55);
+    knee.rotateX(1.05);
+    const shoulder = figure.bone(side === "left" ? "leftShoulder" : "rightShoulder");
+    shoulder.quaternion.copy(figure.restLocal.get(side === "left" ? "leftShoulder" : "rightShoulder")!);
+    shoulder.rotateZ((side === "left" ? 1 : -1) * 0.35);
+    shoulder.rotateX(-0.25);
+  }
+  figure.bone("root").rotation.set(0, walker.yaw, 0);
+  figure.refreshWorld();
 }
 
 function poseLeg(
