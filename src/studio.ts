@@ -103,9 +103,16 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(scene, figure);
   const pickList = figure.pickables();
-  const restHint = "Walk to finds on the lawn · jetpack flies";
+  const restHint = "Walk to finds on the lawn · jetpack: double-tap to fly";
 
   const walker = createWalker();
+  const DOUBLE_MS = 320;
+  let pendingGo: { at: number; point: Vector3 } | null = null;
+
+  const goTo = (point: Vector3, fly: boolean): void => {
+    setDestination(walker, point, fly);
+    hint.textContent = fly ? "Flying there" : "Walking there";
+  };
   figure.refreshWorld();
   const leftLock = createFootLock(figure.worldPos("leftToe"));
   const rightLock = createFootLock(figure.worldPos("rightToe"));
@@ -280,8 +287,18 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       floorPoint.x = clamp(floorPoint.x, -ROOM, ROOM);
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
       floorPoint.y = 0;
-      setDestination(walker, floorPoint);
-      hint.textContent = wardrobe.isWorn("jetpack") ? "Flying there" : "Walking there";
+      const now = performance.now();
+      if (wardrobe.isWorn("jetpack") && pendingGo && now - pendingGo.at < DOUBLE_MS) {
+        goTo(floorPoint, true);
+        pendingGo = null;
+        return;
+      }
+      if (wardrobe.isWorn("jetpack")) {
+        pendingGo = { at: now, point: floorPoint.clone() };
+        return;
+      }
+      pendingGo = null;
+      goTo(floorPoint, false);
     }
   });
 
@@ -330,6 +347,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
     const time = now / 1000;
+
+    if (pendingGo && now - pendingGo.at >= DOUBLE_MS) {
+      goTo(pendingGo.point, false);
+      pendingGo = null;
+    }
 
     const jet = wardrobe.isWorn("jetpack");
     const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet);

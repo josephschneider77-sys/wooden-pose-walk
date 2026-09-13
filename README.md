@@ -9,13 +9,13 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the floor** — walk there
 - **Walk to finds on the lawn** — beret, sunglasses, shoes, shirt, pants, belt, socks, sword, shield, jetpack
-- **Jetpack** — tap the grass to fly there; tap the pack to take it off
+- **Jetpack** — single tap still walks; double-tap the grass to fly there
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
 Posed arms stay while walking. Posed legs return when the figure is idle. Refresh the page to reset the pose.
 
-This branch is a **find-and-wear** experiment kept off `main`. One item per slot. The jetpack is functional: wearing it turns click-to-move into a flight.
+This branch is a **find-and-wear** experiment kept off `main`. One item per slot. With the jetpack on, double-tap to fly; a single tap still walks.
 
 ## Run locally
 

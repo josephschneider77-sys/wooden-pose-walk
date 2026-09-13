@@ -7,6 +7,7 @@ export interface Walker {
   yaw: number;
   speed: number;
   phase: number;
+  fly: boolean;
 }
 
 export function createWalker(): Walker {
@@ -15,6 +16,7 @@ export function createWalker(): Walker {
     yaw: 0,
     speed: 0,
     phase: 0,
+    fly: false,
   };
 }
 
@@ -27,21 +29,24 @@ const ARRIVE = 0.2;
 const STEP_METERS = 0.72;
 const FLY_HEIGHT = 1.58;
 
-export function setDestination(walker: Walker, point: Vector3): void {
+export function setDestination(walker: Walker, point: Vector3, fly = false): void {
   walker.destination = point.clone();
   walker.destination.y = 0;
+  walker.fly = fly;
 }
 
 export function steerWalker(
   walker: Walker,
   rootPosition: Vector3,
   dt: number,
-  fly = false,
+  canFly = false,
 ): { walkWeight: number; arrived: boolean; flying: boolean } {
+  const fly = canFly && (walker.fly || rootPosition.y > 0.08);
   const airborne = fly && (walker.destination !== null || rootPosition.y > 0.08);
-  const targetY = fly && walker.destination ? FLY_HEIGHT : 0;
+  const targetY = canFly && walker.fly && walker.destination ? FLY_HEIGHT : 0;
   rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
   if (!fly) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
+  if (rootPosition.y < 0.08 && !walker.destination) walker.fly = false;
 
   if (!walker.destination) {
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
