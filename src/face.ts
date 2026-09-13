@@ -13,10 +13,12 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import type { WebGLProgramParametersWithUniforms } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { WoodenMannequin } from "./mannequin";
+import { createWoodMaps } from "./wood";
 
-const HEAD_HEIGHT = 0.236;
+const HEAD_HEIGHT = 0.228;
 
 function loadTexture(url: string, color: boolean): Promise<Texture> {
   return new TextureLoader().loadAsync(url).then((texture) => {
@@ -63,9 +65,54 @@ function firstMesh(root: Group): Mesh {
   return found;
 }
 
+function blendNeckIntoWood(
+  material: MeshPhysicalMaterial,
+  woodMap: Texture,
+  clipBottom: number,
+  skinStart: number,
+): void {
+  material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
+    shader.uniforms.woodMap = { value: woodMap };
+    shader.uniforms.neckClip = { value: new Vector2(clipBottom, skinStart) };
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vFacePos;`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        vFacePos = position;`,
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform sampler2D woodMap;
+        uniform vec2 neckClip;
+        varying vec3 vFacePos;`,
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `#include <opaque_fragment>
+        float neckBand = smoothstep(neckClip.x, neckClip.y, vFacePos.y);
+        float nape = smoothstep(0.05, -0.03, vFacePos.z) * (1.0 - smoothstep(neckClip.y, neckClip.y + 0.05, vFacePos.y));
+        float keepSkin = clamp(neckBand * (1.0 - nape * 0.88), 0.0, 1.0);
+        if (keepSkin < 0.045) discard;
+        vec3 woodC = texture2D(woodMap, vFacePos.xz * 3.4 + 0.5).rgb;
+        gl_FragColor.rgb = mix(woodC, gl_FragColor.rgb, keepSkin);
+        `,
+      );
+  };
+  material.customProgramCacheKey = () => "face-neck-blend";
+}
+
 /**
  * Lee Perry-Smith Infinite 3D Head Scan (CC BY 3.0).
- * Fitted onto the mannequin neck in place of the wooden skull.
+ * Seated in a wooden neck socket; the lower neck fades into walnut.
  */
 export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group> {
   const base = import.meta.env.BASE_URL;
@@ -79,24 +126,26 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
 
   const scan = firstMesh(gltf.scene);
   const roughnessMap = specToRoughness(spec);
-  scan.material = new MeshPhysicalMaterial({
+  const wood = createWoodMaps("#c08a4a", 14, "walnut", 256);
+  const material = new MeshPhysicalMaterial({
     name: "skin",
     map: color,
     normalMap: normal,
-    normalScale: new Vector2(1.05, 1.05),
+    normalScale: new Vector2(0.95, 0.95),
     roughnessMap,
-    roughness: 0.42,
+    roughness: 0.44,
     metalness: 0,
     displacementMap: displacement,
-    displacementScale: 0.0045,
-    displacementBias: -0.0015,
-    sheen: 0.55,
+    displacementScale: 0.0032,
+    displacementBias: -0.001,
+    sheen: 0.42,
     sheenColor: new Color("#c47a5a"),
-    sheenRoughness: 0.38,
-    clearcoat: 0.16,
-    clearcoatRoughness: 0.48,
-    envMapIntensity: 0.7,
+    sheenRoughness: 0.4,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.5,
+    envMapIntensity: 0.62,
   });
+  scan.material = material;
   scan.castShadow = true;
   scan.receiveShadow = true;
 
@@ -105,13 +154,21 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
   const size = box.getSize(new Vector3());
   const center = box.getCenter(new Vector3());
   scan.position.sub(center);
-  scan.position.y += size.y * 0.06;
+  scan.position.y += size.y * 0.015;
+
+  const local = new Box3().setFromCenterAndSize(
+    new Vector3(0, size.y * 0.015, 0),
+    size,
+  );
+  const yMin = local.min.y;
+  const span = size.y;
+  blendNeckIntoWood(material, wood.map, yMin + span * 0.06, yMin + span * 0.3);
 
   const wrapper = new Group();
   wrapper.name = "face";
   wrapper.add(gltf.scene);
   wrapper.scale.setScalar(HEAD_HEIGHT / Math.max(size.y, 1e-5));
-  wrapper.position.set(0, 0.068, 0.012);
+  wrapper.position.set(0, 0.05, 0.008);
 
   if (figure.skull) figure.skull.visible = false;
   figure.bone("head").add(wrapper);

@@ -2,12 +2,15 @@ import {
   BoxGeometry,
   CylinderGeometry,
   Group,
+  LatheGeometry,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
   SphereGeometry,
+  TorusGeometry,
+  Vector2,
   Vector3,
 } from "three";
 import { boneOrientTowards, twoBoneInverseKinematics, type Xform } from "./ik";
@@ -148,6 +151,7 @@ export class WoodenMannequin {
   readonly toeMinHeight: number;
   readonly toeEndMinHeight: number;
   skull: Mesh | null = null;
+  neckSocket: Group | null = null;
 
   private readonly wood = createWoodMaterial({
     kind: "walnut",
@@ -348,6 +352,44 @@ export class WoodenMannequin {
     return meshes;
   }
 
+  private buildNeckSocket(head: Object3D): Group {
+    const socket = new Group();
+    socket.name = "neckSocket";
+    socket.position.y = -0.012;
+    head.add(socket);
+
+    const cup = new Mesh(
+      new LatheGeometry(
+        [
+          new Vector2(0.034, -0.028),
+          new Vector2(0.04, -0.01),
+          new Vector2(0.052, 0.01),
+          new Vector2(0.062, 0.026),
+          new Vector2(0.058, 0.034),
+        ],
+        32,
+      ),
+      this.wood,
+    );
+    cup.castShadow = true;
+    cup.receiveShadow = true;
+    socket.add(cup);
+
+    const lip = new Mesh(
+      new TorusGeometry(0.056, 0.007, 12, 36),
+      this.joint,
+    );
+    lip.rotation.x = Math.PI / 2;
+    lip.position.y = 0.03;
+    lip.castShadow = true;
+    lip.receiveShadow = true;
+    socket.add(lip);
+
+    const pivot = addMesh(socket, ball(0.034, this.joint));
+    pivot.position.y = -0.02;
+    return socket;
+  }
+
   private tagLimb(object: Object3D, limbId: LimbId): void {
     object.userData.limbId = limbId;
   }
@@ -419,7 +461,7 @@ export class WoodenMannequin {
     chest.add(neck);
     this.register("neck", neck);
     addMesh(neck, ball(0.038, this.joint));
-    addMesh(neck, limb(0.09, 0.028, 0.032, this.wood)).position.y = -0.01;
+    addMesh(neck, limb(0.138, 0.03, 0.042, this.wood)).position.y = 0.03;
 
     const head = new Group();
     head.position.set(0, 0.12, 0);
@@ -429,6 +471,7 @@ export class WoodenMannequin {
     skull.scale.set(0.86, 1.18, 0.92);
     skull.position.y = 0.07;
     this.skull = skull;
+    this.neckSocket = this.buildNeckSocket(head);
 
     this.buildArm("left", chest);
     this.buildArm("right", chest);
