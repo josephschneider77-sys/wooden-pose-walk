@@ -6,19 +6,12 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 
 ## Controls
 
+- **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the floor** — walk there
-- **Drag** — orbit the camera
+- **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
-- **Two-bone leg IK** — Holden-style heel placement from a toe target (soft max extension, knee side vector, no pole vector)
-- **Toe foot lock** — lock the toe to its contact point while the foot is planted; unlock with distance / contact rules; cubic inertialization blends
-- **Ground height clamp** — keep heels / toes from sinking
-- **Show contact markers** — gold / blue dots on the current toe targets
-- **Image pipeline** — HDR compose: contact AO → highlight bloom → ACES once. Turn off for the no-post baseline
-- **Contact AO** — GTAO around joints, cloak folds, and floor contact
-- **Highlight bloom** — window and specular peaks only (high threshold, before tone map)
-- **AO debug view** — raw denoised AO
 
-Turn IK or lock off to compare against the raw procedural walk cycle. The figure should still read as carved walnut / ebony with the pipeline off.
+Posed arms stay while walking. Posed legs return when the figure is idle. Refresh the page to reset the pose.
 
 ## Run locally
 

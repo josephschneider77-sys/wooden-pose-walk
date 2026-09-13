@@ -3,13 +3,13 @@ import {
   Color,
   DirectionalLight,
   Fog,
-  Group,
   HemisphereLight,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   PCFSoftShadowMap,
   PerspectiveCamera,
+  Plane,
   PlaneGeometry,
   PMREMGenerator,
   Raycaster,
@@ -26,13 +26,21 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createFootLock, updateFootLockingState } from "./footLock";
 import {
   createWalker,
-  describeGait,
   poseMannequin,
   setDestination,
   steerWalker,
 } from "./locomotion";
 import { ClothCape } from "./cape";
-import { WoodenMannequin } from "./mannequin";
+import {
+  isArm,
+  limbAnchor,
+  limbEndBone,
+  limbIdOf,
+  limbLabel,
+  limbSide,
+  type LimbId,
+  WoodenMannequin,
+} from "./mannequin";
 import { clamp } from "./math";
 import { createImagePipeline } from "./pipeline";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
@@ -43,21 +51,16 @@ const UNLOCK_DISTANCE = 0.2;
 const LOCK_DISTANCE = 0.09;
 const BLEND_TIME = 0.14;
 
-interface Toggles {
-  ik: boolean;
-  lock: boolean;
-  clampHeight: boolean;
-  markers: boolean;
-  pipeline: boolean;
-  ao: boolean;
-  bloom: boolean;
-  aoDebug: boolean;
+interface Grab {
+  id: LimbId;
+  pointerId: number;
+  originHit: Vector3;
+  originEnd: Vector3;
+  plane: Plane;
 }
 
 export function startStudio(canvas: HTMLCanvasElement): void {
   const hint = document.querySelector("#hint") as HTMLParagraphElement;
-  const status = document.querySelector("#status") as HTMLParagraphElement;
-  const toggles = bindToggles();
 
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -93,45 +96,153 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   scene.add(figure.root);
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
+  const pickList = figure.pickables();
 
   const walker = createWalker();
   figure.refreshWorld();
   const leftLock = createFootLock(figure.worldPos("leftToe"));
   const rightLock = createFootLock(figure.worldPos("rightToe"));
+  const holds = new Map<LimbId, Vector3>();
 
-  const targetMark = makeTargetMark();
-  scene.add(targetMark);
-  const leftMark = makeContactMark("#d7a441");
-  const rightMark = makeContactMark("#6ea0c4");
-  scene.add(leftMark, rightMark);
+  const highlight = new Mesh(
+    new SphereGeometry(0.034, 16, 12),
+    new MeshPhysicalMaterial({
+      color: "#d7a441",
+      roughness: 0.28,
+      metalness: 0.08,
+      emissive: "#c4842a",
+      emissiveIntensity: 0.35,
+      transparent: true,
+      opacity: 0.92,
+    }),
+  );
+  highlight.visible = false;
+  highlight.renderOrder = 2;
+  scene.add(highlight);
 
   const raycaster = new Raycaster();
   const pointer = new Vector2();
   const floorPoint = new Vector3();
+  const planeHit = new Vector3();
+  const worldTarget = new Vector3();
+  const cameraDir = new Vector3();
   const pointerState = { x: 0, y: 0, moved: false };
+  let grab: Grab | null = null;
+  let hover: LimbId | null = null;
+
+  const setPointer = (event: PointerEvent): void => {
+    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  };
+
+  const pickLimb = (event: PointerEvent): LimbId | null => {
+    setPointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(pickList, false)[0];
+    return hit ? limbIdOf(hit.object) : null;
+  };
+
+  const intersectGrabPlane = (event: PointerEvent, plane: Plane): boolean => {
+    setPointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    return raycaster.ray.intersectPlane(plane, planeHit) !== null;
+  };
+
+  const storeHold = (id: LimbId, world: Vector3): void => {
+    const local = world.clone();
+    if (!isArm(id)) local.y = Math.max(local.y, figure.toeMinHeight);
+    figure.bone(limbAnchor(id)).worldToLocal(local);
+    holds.set(id, local);
+  };
 
   canvas.addEventListener("pointerdown", (event) => {
     pointerState.x = event.clientX;
     pointerState.y = event.clientY;
     pointerState.moved = false;
-  });
+
+    const id = pickLimb(event);
+    if (!id) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const plane = new Plane();
+    camera.getWorldDirection(cameraDir);
+    figure.worldPos(limbEndBone(id), worldTarget);
+    plane.setFromNormalAndCoplanarPoint(cameraDir, worldTarget);
+    const originHit = intersectGrabPlane(event, plane)
+      ? planeHit.clone()
+      : worldTarget.clone();
+    grab = {
+      id,
+      pointerId: event.pointerId,
+      originHit,
+      originEnd: worldTarget.clone(),
+      plane,
+    };
+    storeHold(id, worldTarget);
+    walker.destination = null;
+    walker.speed = 0;
+    controls.enabled = false;
+    canvas.setPointerCapture(event.pointerId);
+    canvas.style.cursor = "grabbing";
+    hint.textContent = `Posing the ${limbLabel(id)}`;
+  },
+  true,
+  );
+
   canvas.addEventListener("pointermove", (event) => {
     if (
-      Math.hypot(event.clientX - pointerState.x, event.clientY - pointerState.y) > 10
+      Math.hypot(event.clientX - pointerState.x, event.clientY - pointerState.y) > 8
     ) {
       pointerState.moved = true;
     }
+
+    if (grab && event.pointerId === grab.pointerId) {
+      camera.getWorldDirection(cameraDir);
+      grab.plane.setFromNormalAndCoplanarPoint(cameraDir, grab.originEnd);
+      if (!intersectGrabPlane(event, grab.plane)) return;
+      worldTarget.copy(grab.originEnd).add(planeHit).sub(grab.originHit);
+      storeHold(grab.id, worldTarget);
+      return;
+    }
+
+    hover = pickLimb(event);
+    canvas.style.cursor = hover ? "grab" : "";
+    if (!grab) {
+      hint.textContent = hover
+        ? `Drag the ${limbLabel(hover)} to pose it`
+        : "Grab an arm or a leg to pose it";
+    }
   });
+
   canvas.addEventListener("pointerup", (event) => {
+    if (grab && event.pointerId === grab.pointerId) {
+      hint.textContent = `Holding the ${limbLabel(grab.id)}`;
+      grab = null;
+      controls.enabled = true;
+      try {
+        canvas.releasePointerCapture(event.pointerId);
+      } catch {
+        // capture may already be released
+      }
+      canvas.style.cursor = hover ? "grab" : "";
+      return;
+    }
+
     if (pointerState.moved) return;
     if (pickFloor(event, camera, raycaster, pointer, floorPoint)) {
       floorPoint.x = clamp(floorPoint.x, -ROOM, ROOM);
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
       floorPoint.y = 0;
       setDestination(walker, floorPoint);
-      targetMark.position.copy(floorPoint);
-      targetMark.visible = true;
-      hint.textContent = "Walking there — watch the planted toes";
+      hint.textContent = "Walking there";
+    }
+  });
+
+  canvas.addEventListener("pointercancel", (event) => {
+    if (grab && event.pointerId === grab.pointerId) {
+      grab = null;
+      controls.enabled = true;
     }
   });
 
@@ -147,16 +258,33 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const follow = new Vector3();
   const leftToe = new Vector3();
   const rightToe = new Vector3();
+  const holdWorld = new Vector3();
   let last = performance.now();
+
+  const applyHolds = (walkWeight: number): void => {
+    for (const [id, local] of holds) {
+      if (!isArm(id) && walkWeight > 0.22 && grab?.id !== id) continue;
+      holdWorld.copy(local);
+      figure.bone(limbAnchor(id)).localToWorld(holdWorld);
+      if (isArm(id)) {
+        figure.solveArm(limbSide(id), holdWorld, SOFTENING);
+      } else {
+        figure.solveLeg(limbSide(id), holdWorld, {
+          enableHeightClamp: true,
+          enableHeelLookAt: true,
+          enableToeLookAt: true,
+          softening: SOFTENING,
+        });
+      }
+    }
+  };
 
   const tick = (now: number) => {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
     const time = now / 1000;
 
-    const { walkWeight, arrived } = steerWalker(walker, figure.root.position, dt);
-    if (arrived) targetMark.visible = false;
-
+    const { walkWeight } = steerWalker(walker, figure.root.position, dt);
     const contacts = poseMannequin(figure, walker, walkWeight, time);
     figure.worldPos("leftToe", leftToe);
     figure.worldPos("rightToe", rightToe);
@@ -164,55 +292,55 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     const leftTarget = leftToe.clone();
     const rightTarget = rightToe.clone();
 
-    if (toggles.lock) {
-      updateFootLockingState(
-        leftLock,
-        leftToe,
-        contacts.leftContact,
-        figure.toeMinHeight,
-        dt,
-        UNLOCK_DISTANCE,
-        LOCK_DISTANCE,
-        BLEND_TIME,
-      );
-      updateFootLockingState(
-        rightLock,
-        rightToe,
-        contacts.rightContact,
-        figure.toeMinHeight,
-        dt,
-        UNLOCK_DISTANCE,
-        LOCK_DISTANCE,
-        BLEND_TIME,
-      );
-      leftTarget.copy(leftLock.position);
-      rightTarget.copy(rightLock.position);
-    } else {
-      leftLock.locked = false;
-      rightLock.locked = false;
-    }
+    updateFootLockingState(
+      leftLock,
+      leftToe,
+      contacts.leftContact && !holds.has("leftLeg"),
+      figure.toeMinHeight,
+      dt,
+      UNLOCK_DISTANCE,
+      LOCK_DISTANCE,
+      BLEND_TIME,
+    );
+    updateFootLockingState(
+      rightLock,
+      rightToe,
+      contacts.rightContact && !holds.has("rightLeg"),
+      figure.toeMinHeight,
+      dt,
+      UNLOCK_DISTANCE,
+      LOCK_DISTANCE,
+      BLEND_TIME,
+    );
+    if (!holds.has("leftLeg")) leftTarget.copy(leftLock.position);
+    if (!holds.has("rightLeg")) rightTarget.copy(rightLock.position);
 
-    if (toggles.ik) {
+    if (!holds.has("leftLeg")) {
       figure.solveLeg("left", leftTarget, {
-        enableHeightClamp: toggles.clampHeight,
+        enableHeightClamp: true,
         enableHeelLookAt: true,
         enableToeLookAt: true,
         softening: SOFTENING,
       });
+    }
+    if (!holds.has("rightLeg")) {
       figure.solveLeg("right", rightTarget, {
-        enableHeightClamp: toggles.clampHeight,
+        enableHeightClamp: true,
         enableHeelLookAt: true,
         enableToeLookAt: true,
         softening: SOFTENING,
       });
     }
 
-    leftMark.visible = toggles.markers;
-    rightMark.visible = toggles.markers;
-    leftMark.position.copy(leftTarget);
-    rightMark.position.copy(rightTarget);
-    leftMark.scale.setScalar(leftLock.locked ? 1.15 : 0.75);
-    rightMark.scale.setScalar(rightLock.locked ? 1.15 : 0.75);
+    applyHolds(walkWeight);
+
+    const focus = grab?.id ?? hover;
+    if (focus) {
+      figure.worldPos(limbEndBone(focus), highlight.position);
+      highlight.visible = true;
+    } else {
+      highlight.visible = false;
+    }
 
     cape.update(dt, time, walker.speed, walker.yaw);
 
@@ -221,17 +349,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     controls.target.lerp(follow, 1 - Math.exp(-3.2 * dt));
     controls.update();
     snapKeyShadow(key, follow);
-    targetMark.rotation.y = time * 0.7;
 
-    status.textContent = describeGait(
-      walkWeight,
-      leftLock.locked,
-      rightLock.locked,
-      toggles.ik,
-      toggles.lock,
-    );
-
-    pipeline.render(toggles.pipeline, toggles.ao, toggles.bloom, toggles.aoDebug);
+    pipeline.render(true, true, true, false);
     requestAnimationFrame(tick);
   };
 
@@ -254,37 +373,6 @@ function pickFloor(
   if (t < 0.05) return false;
   out.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, t);
   return Math.abs(out.x) <= ROOM + 0.4 && Math.abs(out.z) <= ROOM + 0.4;
-}
-
-function bindToggles(): Toggles {
-  const toggles: Toggles = {
-    ik: true,
-    lock: true,
-    clampHeight: true,
-    markers: false,
-    pipeline: true,
-    ao: true,
-    bloom: true,
-    aoDebug: false,
-  };
-  const map: Array<[string, keyof Toggles]> = [
-    ["#toggle-ik", "ik"],
-    ["#toggle-lock", "lock"],
-    ["#toggle-clamp", "clampHeight"],
-    ["#toggle-markers", "markers"],
-    ["#toggle-pipeline", "pipeline"],
-    ["#toggle-ao", "ao"],
-    ["#toggle-bloom", "bloom"],
-    ["#toggle-ao-debug", "aoDebug"],
-  ];
-  for (const [selector, key] of map) {
-    const input = document.querySelector(selector) as HTMLInputElement;
-    input.checked = toggles[key];
-    input.addEventListener("change", () => {
-      toggles[key] = input.checked;
-    });
-  }
-  return toggles;
 }
 
 function buildRoom(scene: Scene): DirectionalLight {
@@ -341,8 +429,8 @@ function buildRoom(scene: Scene): DirectionalLight {
   sash.receiveShadow = true;
   scene.add(sash);
 
-  const hemi = new HemisphereLight("#fff4e4", "#7a5634", 0.48);
-  scene.add(hemi);
+  const sky = new HemisphereLight("#fff4e4", "#7a5634", 0.48);
+  scene.add(sky);
 
   const key = new DirectionalLight("#fff1d6", 1.55);
   key.position.set(5.1, 7.4, 3.2);
@@ -378,38 +466,4 @@ function snapKeyShadow(key: DirectionalLight, follow: Vector3): void {
   key.target.position.set(x, 0.15, z);
   key.position.set(x + 5.1, 7.4, z + 3.2);
   key.target.updateMatrixWorld();
-}
-
-function makeTargetMark(): Group {
-  const group = new Group();
-  const ring = new Mesh(
-    new RingGeometry(0.2, 0.28, 32),
-    new MeshPhysicalMaterial({
-      color: "#c45a2a",
-      roughness: 0.4,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.92,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.012;
-  group.add(ring);
-  group.visible = false;
-  return group;
-}
-
-function makeContactMark(color: string): Mesh {
-  const mesh = new Mesh(
-    new SphereGeometry(0.028, 14, 10),
-    new MeshPhysicalMaterial({
-      color,
-      roughness: 0.25,
-      metalness: 0.05,
-      emissive: color,
-      emissiveIntensity: 0.18,
-    }),
-  );
-  mesh.visible = false;
-  return mesh;
 }

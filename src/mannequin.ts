@@ -3,6 +3,7 @@ import {
   CylinderGeometry,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   Object3D,
   Quaternion,
@@ -11,6 +12,8 @@ import {
 } from "three";
 import { boneOrientTowards, twoBoneInverseKinematics, type Xform } from "./ik";
 import { createJointMaterial, createWoodMaterial } from "./wood";
+
+export type LimbId = "leftArm" | "rightArm" | "leftLeg" | "rightLeg";
 
 export type BoneName =
   | "root"
@@ -61,12 +64,53 @@ const _scale = new Vector3();
 const _side = new Vector3();
 const _modifiedHip = new Quaternion();
 const _modifiedKnee = new Quaternion();
+const _modifiedShoulder = new Quaternion();
+const _modifiedElbow = new Quaternion();
 const _pelvisX = { translation: new Vector3(), rotation: new Quaternion() };
+const _chestX = { translation: new Vector3(), rotation: new Quaternion() };
 const _hipX = { translation: new Vector3(), rotation: new Quaternion() };
 const _kneeX = { translation: new Vector3(), rotation: new Quaternion() };
 const _heelX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeX = { translation: new Vector3(), rotation: new Quaternion() };
 const _toeEndX = { translation: new Vector3(), rotation: new Quaternion() };
+const _shoulderX = { translation: new Vector3(), rotation: new Quaternion() };
+const _elbowX = { translation: new Vector3(), rotation: new Quaternion() };
+const _wristX = { translation: new Vector3(), rotation: new Quaternion() };
+const _handX = { translation: new Vector3(), rotation: new Quaternion() };
+
+export function limbIdOf(object: Object3D): LimbId | null {
+  let current: Object3D | null = object;
+  while (current) {
+    const id = current.userData.limbId as LimbId | undefined;
+    if (id) return id;
+    current = current.parent;
+  }
+  return null;
+}
+
+export function isArm(id: LimbId): boolean {
+  return id === "leftArm" || id === "rightArm";
+}
+
+export function limbSide(id: LimbId): "left" | "right" {
+  return id.startsWith("left") ? "left" : "right";
+}
+
+export function limbAnchor(id: LimbId): "chest" | "pelvis" {
+  return isArm(id) ? "chest" : "pelvis";
+}
+
+export function limbEndBone(id: LimbId): BoneName {
+  if (id === "leftArm") return "leftHand";
+  if (id === "rightArm") return "rightHand";
+  if (id === "leftLeg") return "leftToe";
+  return "rightToe";
+}
+
+export function limbLabel(id: LimbId): string {
+  const side = limbSide(id);
+  return isArm(id) ? `${side} arm` : `${side} leg`;
+}
 
 function addMesh(parent: Object3D, mesh: Mesh): Mesh {
   mesh.castShadow = true;
@@ -235,7 +279,86 @@ export class WoodenMannequin {
     this.refreshWorld();
   }
 
-  // TODO: optional organ / joint labels for a later anatomy-quiz pass.
+  solveArm(side: "left" | "right", targetHand: Vector3, softening: number): void {
+    const shoulderName = side === "left" ? "leftShoulder" : "rightShoulder";
+    const elbowName = side === "left" ? "leftElbow" : "rightElbow";
+    const wristName = side === "left" ? "leftWrist" : "rightWrist";
+    const handName = side === "left" ? "leftHand" : "rightHand";
+
+    const chest = this.bone("chest");
+    const shoulder = this.bone(shoulderName);
+    const elbow = this.bone(elbowName);
+    const wrist = this.bone(wristName);
+    const hand = this.bone(handName);
+
+    xformOf(wrist, _wristX);
+    xformOf(hand, _handX);
+    const targetWrist = targetHand.clone().add(
+      _wristX.translation.clone().sub(_handX.translation),
+    );
+
+    xformOf(chest, _chestX);
+    xformOf(shoulder, _shoulderX);
+    xformOf(elbow, _elbowX);
+    xformOf(wrist, _wristX);
+
+    const elbowSideLocal = side === "left" ? new Vector3(1, 0, -0.35) : new Vector3(-1, 0, -0.35);
+    _side.copy(elbowSideLocal).applyQuaternion(_elbowX.rotation);
+    const maxExtension = _shoulderX.translation.distanceTo(_wristX.translation);
+
+    twoBoneInverseKinematics(
+      _modifiedShoulder,
+      _modifiedElbow,
+      _chestX,
+      _shoulderX,
+      _elbowX,
+      _wristX,
+      targetWrist,
+      _side,
+      maxExtension,
+      softening,
+    );
+    shoulder.quaternion.copy(_modifiedShoulder);
+    elbow.quaternion.copy(_modifiedElbow);
+
+    this.refreshWorld();
+    xformOf(elbow, _elbowX);
+    xformOf(wrist, _wristX);
+    xformOf(hand, _handX);
+    wrist.quaternion.copy(
+      boneOrientTowards(_elbowX, _wristX, _handX, targetHand),
+    );
+    this.refreshWorld();
+  }
+
+  pickables(): Mesh[] {
+    const meshes: Mesh[] = [];
+    this.root.traverse((object) => {
+      if ((object as Mesh).isMesh && limbIdOf(object)) {
+        meshes.push(object as Mesh);
+      }
+    });
+    return meshes;
+  }
+
+  private tagLimb(object: Object3D, limbId: LimbId): void {
+    object.userData.limbId = limbId;
+  }
+
+  private addGrab(parent: Object3D, radius: number, limbId: LimbId, offsetY = 0): void {
+    const handle = new Mesh(
+      new SphereGeometry(radius, 10, 8),
+      new MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      }),
+    );
+    handle.position.y = offsetY;
+    handle.userData.limbId = limbId;
+    handle.userData.grabHandle = true;
+    parent.add(handle);
+  }
 
   private register(name: BoneName, object: Object3D): Object3D {
     object.name = name;
@@ -311,30 +434,39 @@ export class WoodenMannequin {
 
   private buildArm(side: "left" | "right", chest: Object3D): void {
     const sign = side === "left" ? 1 : -1;
+    const limbId: LimbId = side === "left" ? "leftArm" : "rightArm";
     const shoulder = new Group();
     shoulder.position.set(sign * (LIMB.shoulderWidth / 2), 0.22, 0);
     chest.add(shoulder);
     this.register(side === "left" ? "leftShoulder" : "rightShoulder", shoulder);
+    this.tagLimb(shoulder, limbId);
     addMesh(shoulder, ball(0.05, this.joint));
     addMesh(shoulder, limb(LIMB.upperArm, 0.034, 0.028, this.wood));
+    this.addGrab(shoulder, 0.09, limbId, -LIMB.upperArm * 0.45);
 
     const elbow = new Group();
     elbow.position.set(0, -LIMB.upperArm, 0);
     shoulder.add(elbow);
     this.register(side === "left" ? "leftElbow" : "rightElbow", elbow);
+    this.tagLimb(elbow, limbId);
     addMesh(elbow, ball(0.042, this.joint));
     addMesh(elbow, limb(LIMB.forearm, 0.026, 0.022, this.wood));
+    this.addGrab(elbow, 0.085, limbId, -LIMB.forearm * 0.45);
 
     const wrist = new Group();
     wrist.position.set(0, -LIMB.forearm, 0);
     elbow.add(wrist);
     this.register(side === "left" ? "leftWrist" : "rightWrist", wrist);
+    this.tagLimb(wrist, limbId);
     addMesh(wrist, ball(0.03, this.joint));
+    this.addGrab(wrist, 0.08, limbId);
 
     const hand = new Group();
     hand.position.set(0, -0.02, 0);
     wrist.add(hand);
     this.register(side === "left" ? "leftHand" : "rightHand", hand);
+    this.tagLimb(hand, limbId);
+    this.addGrab(hand, 0.09, limbId, -0.05);
     const palm = addMesh(
       hand,
       new Mesh(new BoxGeometry(0.055, 0.1, 0.028), this.darkWood),
@@ -346,25 +478,32 @@ export class WoodenMannequin {
 
   private buildLeg(side: "left" | "right", pelvis: Object3D): void {
     const sign = side === "left" ? 1 : -1;
+    const limbId: LimbId = side === "left" ? "leftLeg" : "rightLeg";
     const hip = new Group();
     hip.position.set(sign * (LIMB.hipWidth / 2), -0.03, 0);
     pelvis.add(hip);
     this.register(side === "left" ? "leftHip" : "rightHip", hip);
+    this.tagLimb(hip, limbId);
     addMesh(hip, ball(0.056, this.joint));
     addMesh(hip, limb(LIMB.thigh, 0.044, 0.036, this.wood));
+    this.addGrab(hip, 0.1, limbId, -LIMB.thigh * 0.45);
 
     const knee = new Group();
     knee.position.set(0, -LIMB.thigh, 0);
     hip.add(knee);
     this.register(side === "left" ? "leftKnee" : "rightKnee", knee);
+    this.tagLimb(knee, limbId);
     addMesh(knee, ball(0.048, this.joint));
     addMesh(knee, limb(LIMB.shin, 0.034, 0.028, this.wood));
+    this.addGrab(knee, 0.09, limbId, -LIMB.shin * 0.45);
 
     const heel = new Group();
     heel.position.set(0, -LIMB.shin, 0);
     knee.add(heel);
     this.register(side === "left" ? "leftHeel" : "rightHeel", heel);
+    this.tagLimb(heel, limbId);
     addMesh(heel, ball(0.034, this.joint));
+    this.addGrab(heel, 0.08, limbId);
 
     const foot = addMesh(
       heel,
@@ -376,6 +515,8 @@ export class WoodenMannequin {
     toe.position.set(0, -0.028, LIMB.footLen * 0.62);
     heel.add(toe);
     this.register(side === "left" ? "leftToe" : "rightToe", toe);
+    this.tagLimb(toe, limbId);
+    this.addGrab(toe, 0.08, limbId);
     addMesh(toe, ball(0.02, this.joint));
     const toePad = addMesh(
       toe,
