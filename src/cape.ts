@@ -21,8 +21,8 @@ const TIMESTEP = 1 / 60;
 const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 const ITERATIONS = 8;
 const FRICTION = 0.55;
-const SHELL_PASSES = 4;
-const SKIN = 0.012;
+const MAX_STEP = 0.07;
+const SKIN = 0.01;
 const FLOOR_Y = 0.03;
 const COLLAR_A0 = Math.PI * 0.4;
 const COLLAR_A1 = Math.PI * 1.6;
@@ -114,7 +114,7 @@ export class ClothCape {
     this.loadFabric(material);
 
     this.pinCollar();
-    for (let i = 0; i < 90; i++) this.step(1 / 60, 0, 0, 0);
+    for (let i = 0; i < 48; i++) this.step(1 / 60, 0, 0, 0);
     this.writeGeometry();
   }
 
@@ -177,19 +177,23 @@ export class ClothCape {
     }
 
     this.shell.refresh(this.figure);
-    const pinned = this.cloth.w + 1;
+    const free = (this.cloth.w + 1) * 2;
 
     for (let n = 0; n < ITERATIONS; n++) {
       for (const c of this.cloth.constraints) {
         satisfyConstraint(c.a, c.b, c.rest);
       }
       this.pinCollar();
-      this.shell.resolve(particles, pinned);
+      if (n % 2 === 1) this.shell.resolve(particles, free, false);
     }
 
     this.keepOnBack();
-    this.shell.resolve(particles, pinned);
     for (const p of particles) {
+      _hit.subVectors(p.position, p.previous);
+      const step = _hit.length();
+      if (step > MAX_STEP) {
+        p.position.copy(p.previous).addScaledVector(_hit, MAX_STEP / step);
+      }
       if (p.position.y < FLOOR_Y) {
         p.position.y = FLOOR_Y;
         p.previous.x += (p.position.x - p.previous.x) * FRICTION;
@@ -199,10 +203,8 @@ export class ClothCape {
 
     this.pinCollar();
     this.softYoke();
-    for (let n = 0; n < SHELL_PASSES; n++) {
-      this.keepOnBack();
-      this.shell.resolve(particles, pinned);
-    }
+    this.keepOnBack();
+    this.shell.resolve(particles, free, true);
     this.pinCollar();
   }
 
@@ -216,10 +218,9 @@ export class ClothCape {
       _hit.subVectors(p.position, _chest);
       const lateral = Math.abs(_hit.dot(_side));
       if (lateral > 0.14) continue;
-      const intoBody = _hit.dot(_forward) + 0.05;
-      if (intoBody > 0) {
-        p.position.addScaledVector(_forward, -intoBody - 0.02);
-        p.previous.addScaledVector(_forward, -intoBody - 0.02);
+      const intoBody = _hit.dot(_forward) + 0.02;
+      if (intoBody > 0.015) {
+        p.position.addScaledVector(_forward, -intoBody * 0.45);
       }
     }
   }

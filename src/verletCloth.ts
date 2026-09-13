@@ -5,7 +5,7 @@ import { Quaternion, Vector3 } from "three";
  * (aatishb/drape, MIT): skip-neighbor bending springs and frictional
  * contact. https://github.com/aatishb/drape
  */
-const DAMPING = 0.03;
+const DAMPING = 0.08;
 const DRAG = 1 - DAMPING;
 /** Drape restDistanceB — longer bending rest lets the sheet sag into folds. */
 const BEND_SLACK = 1.06;
@@ -150,10 +150,30 @@ const _push = new Vector3();
 const _toA = new Vector3();
 const _local = new Vector3();
 const _delta = new Vector3();
+const _vel = new Vector3();
 const _invRot = new Quaternion();
 
+/**
+ * Move onto the surface without adding bounce. Optional settle
+ * kills leftover inward speed and damps sliding.
+ */
+function applyLift(particle: ClothParticle, normal: Vector3, lift: number, settle: boolean): void {
+  particle.position.addScaledVector(normal, lift);
+  particle.previous.addScaledVector(normal, lift);
+  if (!settle) return;
+  _vel.subVectors(particle.position, particle.previous);
+  const inward = _vel.dot(normal);
+  if (inward < 0) particle.previous.addScaledVector(normal, inward);
+  particle.previous.lerp(particle.position, 0.18);
+}
+
 /** Hard projection so cloth cannot remain inside a sphere. */
-export function projectOutSphere(particle: ClothParticle, center: Vector3, radius: number): void {
+export function projectOutSphere(
+  particle: ClothParticle,
+  center: Vector3,
+  radius: number,
+  settle = false,
+): void {
   _diff.subVectors(particle.position, center);
   const dist = _diff.length();
   if (dist === 0) {
@@ -161,10 +181,8 @@ export function projectOutSphere(particle: ClothParticle, center: Vector3, radiu
     return;
   }
   if (dist >= radius) return;
-  const lift = radius - dist;
   _push.copy(_diff).multiplyScalar(1 / dist);
-  particle.position.addScaledVector(_push, lift);
-  particle.previous.addScaledVector(_push, lift);
+  applyLift(particle, _push, radius - dist, settle);
 }
 
 /** Hard projection out of a bone capsule (segment + radius). */
@@ -173,6 +191,7 @@ export function projectOutCapsule(
   a: Vector3,
   b: Vector3,
   radius: number,
+  settle = false,
 ): void {
   _seg.subVectors(b, a);
   const lenSq = _seg.lengthSq();
@@ -181,7 +200,7 @@ export function projectOutCapsule(
     t = Math.min(1, Math.max(0, _toA.subVectors(particle.position, a).dot(_seg) / lenSq));
   }
   _closest.copy(a).addScaledVector(_seg, t);
-  projectOutSphere(particle, _closest, radius);
+  projectOutSphere(particle, _closest, radius, settle);
 }
 
 /**
@@ -195,6 +214,7 @@ export function projectOutBox(
   hx: number,
   hy: number,
   hz: number,
+  settle = false,
 ): void {
   _invRot.copy(rotation).invert();
   _local.copy(particle.position).sub(center).applyQuaternion(_invRot);
@@ -216,6 +236,8 @@ export function projectOutBox(
 
   _delta.copy(_local).applyQuaternion(rotation).add(center);
   _delta.sub(particle.position);
-  particle.position.add(_delta);
-  particle.previous.add(_delta);
+  const lift = _delta.length();
+  if (lift < 1e-10) return;
+  _push.copy(_delta).multiplyScalar(1 / lift);
+  applyLift(particle, _push, lift, settle);
 }
