@@ -7,7 +7,7 @@ import {
   HemisphereLight,
   Mesh,
   MeshPhysicalMaterial,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
@@ -57,7 +57,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
 
   const scene = new Scene();
   scene.background = new Color("#e7d2b4");
