@@ -410,15 +410,6 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
     const jet = wardrobe.isWorn("jetpack");
     const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet);
-    if (
-      jet &&
-      !walker.fly &&
-      time - lastPortal > 1.3 &&
-      nearPortalApproach(figure.root.position)
-    ) {
-      setDestination(walker, rooms.portalApproach, true, 2.55);
-      hint.textContent = "Flying through the window";
-    }
     if (flying && time - lastPortal > 1.3 && throughPortal(figure.root.position)) {
       enterWorld(world === "lawn" ? "roof" : "lawn");
     }
@@ -494,16 +485,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (found) syncWindowLook();
     if (found && !grab) {
       hint.textContent = wardrobe.allWorn()
-        ? "Every find is on — the window is just light now"
+        ? "Every find is on — tap the window when you want to fly through"
         : found;
-    }
-    if (
-      found?.includes("jetpack") &&
-      world === "lawn" &&
-      figure.root.position.x < -2.4
-    ) {
-      setDestination(walker, rooms.portalApproach, true, 2.55);
-      hint.textContent = "Flying through the window";
     }
 
     figure.worldPos("chest", follow);
@@ -569,10 +552,6 @@ function pickWindow(raycaster: Raycaster, pane: Mesh): boolean {
 
 function throughPortal(pos: Vector3): boolean {
   return pos.x < PORTAL.x + 0.7 && Math.abs(pos.z - PORTAL.z) < PORTAL.halfW && pos.y > 0.4;
-}
-
-function nearPortalApproach(pos: Vector3): boolean {
-  return pos.x < -7.15 && Math.abs(pos.z - PORTAL.z) < PORTAL.halfW;
 }
 
 function applyWorld(
