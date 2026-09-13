@@ -13,7 +13,6 @@ import {
   PlaneGeometry,
   PMREMGenerator,
   Raycaster,
-  RingGeometry,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
@@ -42,6 +41,7 @@ import {
   WoodenMannequin,
 } from "./mannequin";
 import { clamp } from "./math";
+import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
@@ -72,8 +72,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   renderer.shadowMap.type = PCFSoftShadowMap;
 
   const scene = new Scene();
-  scene.background = new Color("#e4c9a8");
-  scene.fog = new Fog("#e4c9a8", 12, 28);
+  scene.background = new Color("#c5d4ae");
+  scene.fog = new Fog("#c5d4ae", 13, 30);
   const pmrem = new PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.32;
@@ -376,30 +376,8 @@ function pickFloor(
 }
 
 function buildRoom(scene: Scene): DirectionalLight {
-  const floorMat = createWoodMaterial({
-    kind: "floor",
-    seed: 7,
-    repeatX: 8,
-    repeatY: 8,
-  });
-  const floor = new Mesh(new PlaneGeometry(28, 28), floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  const tape = new MeshPhysicalMaterial({
-    color: "#d8c4a0",
-    roughness: 0.92,
-    metalness: 0,
-  });
-  const ring = new Mesh(new RingGeometry(2.15, 2.22, 64), tape);
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.004;
-  scene.add(ring);
-  const inner = new Mesh(new RingGeometry(0.95, 1.0, 48), tape);
-  inner.rotation.x = -Math.PI / 2;
-  inner.position.y = 0.004;
-  scene.add(inner);
+  scene.add(createGrassGround());
+  scene.add(createGrassBlades());
 
   const wallMat = createPlasterMaterial();
   const back = new Mesh(new PlaneGeometry(20, 6.5), wallMat);
@@ -429,10 +407,10 @@ function buildRoom(scene: Scene): DirectionalLight {
   sash.receiveShadow = true;
   scene.add(sash);
 
-  const sky = new HemisphereLight("#fff4e4", "#7a5634", 0.48);
+  const sky = new HemisphereLight("#eef6ff", "#4a6b32", 0.62);
   scene.add(sky);
 
-  const key = new DirectionalLight("#fff1d6", 1.55);
+  const key = new DirectionalLight("#fff4d8", 1.48);
   key.position.set(5.1, 7.4, 3.2);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
