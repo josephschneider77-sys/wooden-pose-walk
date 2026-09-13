@@ -34,8 +34,8 @@ const SPECS: WearSpec[] = [
     title: "beret",
     found: "Found a beret",
     lawn: new Vector3(1.35, 0.07, 1.5),
-    wearPos: new Vector3(0.01, 0.228, 0.0),
-    wearRot: new Vector3(-0.16, 0.32, -0.2),
+    wearPos: new Vector3(0.006, 0.168, 0.012),
+    wearRot: new Vector3(-0.28, 0.18, -0.12),
   },
   {
     id: "sunglasses",
