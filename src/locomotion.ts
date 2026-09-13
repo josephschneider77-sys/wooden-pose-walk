@@ -110,6 +110,7 @@ export function poseMannequin(
   walker: Walker,
   walkWeight: number,
   time: number,
+  held: { leftArm?: boolean; rightArm?: boolean } = {},
 ): { leftContact: boolean; rightContact: boolean } {
   figure.resetPose();
 
@@ -137,8 +138,12 @@ export function poseMannequin(
   const leftContact = poseLeg(figure, "left", leftPhase, walkWeight);
   const rightContact = poseLeg(figure, "right", rightPhase, walkWeight);
 
-  poseArm(figure, "left", -Math.cos(leftPhase * Math.PI * 2), walkWeight);
-  poseArm(figure, "right", -Math.cos(rightPhase * Math.PI * 2), walkWeight);
+  if (!held.leftArm) {
+    poseArm(figure, "left", -Math.cos(leftPhase * Math.PI * 2), walkWeight);
+  }
+  if (!held.rightArm) {
+    poseArm(figure, "right", -Math.cos(rightPhase * Math.PI * 2), walkWeight);
+  }
 
   figure.bone("root").rotation.set(0, walker.yaw, 0);
   figure.refreshWorld();

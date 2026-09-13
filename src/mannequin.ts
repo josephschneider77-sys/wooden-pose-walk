@@ -54,6 +54,8 @@ const LIMB = {
 } as const;
 
 export const MANNEQUIN_HEIGHT = 1.66;
+export const ARM_REACH = LIMB.upperArm + LIMB.forearm;
+export const LEG_REACH = LIMB.thigh + LIMB.shin;
 
 function xformOf(object: Object3D, target: Xform): Xform {
   object.matrixWorld.decompose(target.translation, target.rotation, _scale);
@@ -199,6 +201,7 @@ export class WoodenMannequin {
       enableHeelLookAt: boolean;
       enableToeLookAt: boolean;
       softening: number;
+      maxReach?: number;
     },
   ): void {
     const hipName = side === "left" ? "leftHip" : "rightHip";
@@ -234,8 +237,11 @@ export class WoodenMannequin {
     xformOf(heel, _heelX);
 
     const kneeSideLocal = side === "left" ? new Vector3(1, 0, 0) : new Vector3(-1, 0, 0);
-    _side.copy(kneeSideLocal).applyQuaternion(_kneeX.rotation);
-    const maxExtension = _hipX.translation.distanceTo(_heelX.translation);
+    _side.copy(kneeSideLocal).applyQuaternion(
+      options.maxReach !== undefined ? _pelvisX.rotation : _kneeX.rotation,
+    );
+    const maxExtension =
+      options.maxReach ?? _hipX.translation.distanceTo(_heelX.translation);
 
     twoBoneInverseKinematics(
       _modifiedHip,
@@ -302,9 +308,9 @@ export class WoodenMannequin {
     xformOf(elbow, _elbowX);
     xformOf(wrist, _wristX);
 
-    const elbowSideLocal = side === "left" ? new Vector3(1, 0, -0.35) : new Vector3(-1, 0, -0.35);
-    _side.copy(elbowSideLocal).applyQuaternion(_elbowX.rotation);
-    const maxExtension = _shoulderX.translation.distanceTo(_wristX.translation);
+    const elbowSideLocal = side === "left" ? new Vector3(1, 0, -0.55) : new Vector3(-1, 0, -0.55);
+    _side.copy(elbowSideLocal).applyQuaternion(_chestX.rotation);
+    const maxExtension = ARM_REACH;
 
     twoBoneInverseKinematics(
       _modifiedShoulder,

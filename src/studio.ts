@@ -32,6 +32,7 @@ import {
 import { ClothCape } from "./cape";
 import {
   isArm,
+  LEG_REACH,
   limbAnchor,
   limbEndBone,
   limbIdOf,
@@ -274,6 +275,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
           enableHeelLookAt: true,
           enableToeLookAt: true,
           softening: SOFTENING,
+          maxReach: LEG_REACH,
         });
       }
     }
@@ -285,7 +287,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     const time = now / 1000;
 
     const { walkWeight } = steerWalker(walker, figure.root.position, dt);
-    const contacts = poseMannequin(figure, walker, walkWeight, time);
+    const contacts = poseMannequin(figure, walker, walkWeight, time, {
+      leftArm: holds.has("leftArm"),
+      rightArm: holds.has("rightArm"),
+    });
     figure.worldPos("leftToe", leftToe);
     figure.worldPos("rightToe", rightToe);
 
