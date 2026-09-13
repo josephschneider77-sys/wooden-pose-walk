@@ -108,7 +108,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const wardrobe = new LawnWardrobe(rooms.lawn, figure);
   const pickList = figure.pickables();
   const restHint =
-    "Walk to a gold glint to wear it · double-tap grass to fly · tap the glowing window";
+    "Collect every find on the lawn · the window keeps its frame until then";
 
   const walker = createWalker();
   let lastPortal = -10;
@@ -121,6 +121,22 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   };
 
   const activeWindow = (): Mesh => (world === "lawn" ? rooms.window : rooms.returnWindow);
+
+  const syncWindowLook = (): void => {
+    const open = wardrobe.allWorn();
+    rooms.windowFrame.visible = !open;
+    const glow = rooms.windowGlow.material as MeshBasicMaterial;
+    if (open) {
+      glow.color.setRGB(3.1, 2.7, 2.15);
+      glow.transparent = false;
+      glow.opacity = 1;
+    } else {
+      glow.color.set("#e8c888");
+      glow.transparent = true;
+      glow.opacity = 0.28;
+    }
+  };
+  syncWindowLook();
   figure.refreshWorld();
   const leftLock = createFootLock(figure.worldPos("leftToe"));
   const rightLock = createFootLock(figure.worldPos("rightToe"));
@@ -242,11 +258,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       } else if (wearHover) {
         hint.textContent = `Walk over to put on the ${wearHover.title}`;
       } else if (onWindow && (wardrobe.isWorn("jetpack") || world === "roof")) {
-        hint.textContent = "Tap to fly through the window";
+        hint.textContent = wardrobe.allWorn()
+          ? "Tap the light to fly through"
+          : "Tap to fly through the window";
       } else if (onWindow) {
         hint.textContent = "The jetpack is by the window — walk to it first";
       } else {
-        hint.textContent = restHint;
+        hint.textContent = wardrobe.allWorn()
+          ? "The frame is gone — fly through the light"
+          : restHint;
       }
     }
   });
@@ -259,6 +279,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         const tapWear = wardrobe.hit(raycaster);
         if (tapWear?.worn) {
           hint.textContent = wardrobe.takeOff(tapWear.id) ?? restHint;
+          syncWindowLook();
           grab = null;
           controls.enabled = true;
           try {
@@ -287,6 +308,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     const wearHit = wardrobe.hit(raycaster);
     if (wearHit?.worn) {
       hint.textContent = wardrobe.takeOff(wearHit.id) ?? restHint;
+      syncWindowLook();
       return;
     }
     if (wearHit) {
@@ -464,7 +486,12 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
     cape.update(dt, time, walker.speed, walker.yaw);
     const found = wardrobe.update(time);
-    if (found && !grab) hint.textContent = found;
+    if (found) syncWindowLook();
+    if (found && !grab) {
+      hint.textContent = wardrobe.allWorn()
+        ? "Every find is on — the window is just light now"
+        : found;
+    }
     if (
       found?.includes("jetpack") &&
       world === "lawn" &&
@@ -578,6 +605,8 @@ function buildRooms(scene: Scene): {
   lawn: Group;
   roof: Group;
   window: Mesh;
+  windowGlow: Mesh;
+  windowFrame: Group;
   returnWindow: Mesh;
   portalApproach: Vector3;
 } {
@@ -632,12 +661,16 @@ function buildRooms(scene: Scene): {
   windowPick.name = "studioWindow";
   lawn.add(windowPick);
 
+  const windowFrame = new Group();
+  windowFrame.name = "windowFrame";
+  lawn.add(windowFrame);
+
   const mullion = createWoodMaterial({ kind: "ebony", seed: 11, size: 128 });
   const bar = (w: number, h: number, y: number, z: number) => {
     const mesh = new Mesh(new PlaneGeometry(w, h), mullion);
     mesh.position.set(PORTAL.x + 0.01, y, z);
     mesh.rotation.y = Math.PI / 2;
-    lawn.add(mesh);
+    windowFrame.add(mesh);
   };
   bar(2.4, 0.07, PORTAL.y, PORTAL.z);
   bar(0.07, 3.5, PORTAL.y, PORTAL.z);
@@ -648,7 +681,7 @@ function buildRooms(scene: Scene): {
     board.position.set(PORTAL.x - 0.02, y, z);
     board.rotation.y = Math.PI / 2;
     board.receiveShadow = true;
-    lawn.add(board);
+    windowFrame.add(board);
   };
   lintel(2.72, 0.16, PORTAL.y + 1.83, PORTAL.z);
   lintel(2.72, 0.16, PORTAL.y - 1.83, PORTAL.z);
@@ -692,6 +725,8 @@ function buildRooms(scene: Scene): {
     lawn,
     roof,
     window: windowPick,
+    windowGlow,
+    windowFrame,
     returnWindow,
     portalApproach: new Vector3(-10.5, 0, PORTAL.z),
   };

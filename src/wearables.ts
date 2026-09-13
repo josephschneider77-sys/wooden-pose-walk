@@ -218,6 +218,10 @@ export class LawnWardrobe {
     return this.items.some((item) => item.spec.id === id && item.worn);
   }
 
+  allWorn(): boolean {
+    return this.items.length > 0 && this.items.every((item) => item.worn);
+  }
+
   setThrust(on: boolean, time: number): void {
     const pack = this.items.find((item) => item.spec.id === "jetpack");
     pack?.setThrust(on, time);
