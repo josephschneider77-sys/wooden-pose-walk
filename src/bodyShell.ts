@@ -129,15 +129,24 @@ export class BodyShell {
     setBox(figure, "pelvis", 0, 0.02, 0, 0.12, 0.055, 0.075, b[2]);
   }
 
-  /** Push free particles onto the exterior. Collar / yoke rows stay pinned. */
-  resolve(particles: ClothParticle[], skipCount: number, settle = false): void {
+  /**
+   * Push free particles onto the exterior. Torso / head eject toward
+   * `back` so vertices do not spike out the top or front.
+   */
+  resolve(particles: ClothParticle[], skipCount: number, settle = false, back?: Vector3): void {
     for (let i = skipCount; i < particles.length; i++) {
       const p = particles[i];
       for (const box of this.boxes) {
-        projectOutBox(p, box.center, box.rotation, box.hx, box.hy, box.hz, settle);
+        projectOutBox(p, box.center, box.rotation, box.hx, box.hy, box.hz, settle, true);
       }
-      for (const s of this.spheres) projectOutSphere(p, s.center, s.radius, settle);
-      for (const cap of this.capsules) projectOutCapsule(p, cap.a, cap.b, cap.radius, settle);
+      for (let s = 0; s < this.spheres.length; s++) {
+        const prefer = s <= 1 ? back : undefined;
+        projectOutSphere(p, this.spheres[s].center, this.spheres[s].radius, settle, prefer);
+      }
+      for (let c = 0; c < this.capsules.length; c++) {
+        const prefer = c <= 1 ? back : undefined;
+        projectOutCapsule(p, this.capsules[c].a, this.capsules[c].b, this.capsules[c].radius, settle, prefer);
+      }
     }
   }
 }

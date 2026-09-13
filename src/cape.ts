@@ -21,8 +21,7 @@ const TIMESTEP = 1 / 60;
 const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 const ITERATIONS = 8;
 const FRICTION = 0.55;
-const MAX_STEP = 0.07;
-const SKIN = 0.01;
+const SPIKE = 0.055;
 const FLOOR_Y = 0.03;
 const COLLAR_A0 = Math.PI * 0.4;
 const COLLAR_A1 = Math.PI * 1.6;
@@ -36,6 +35,8 @@ const _chest = new Vector3();
 const _hit = new Vector3();
 const _yoke = new Vector3();
 const _side = new Vector3();
+const _back = new Vector3();
+const _avg = new Vector3();
 
 function bodyFrame(
   figure: WoodenMannequin,
@@ -177,6 +178,8 @@ export class ClothCape {
     }
 
     this.shell.refresh(this.figure);
+    const facing = this.figure.bone("root").rotation.y;
+    _back.set(-Math.sin(facing), 0, -Math.cos(facing));
     const free = (this.cloth.w + 1) * 2;
 
     for (let n = 0; n < ITERATIONS; n++) {
@@ -184,16 +187,11 @@ export class ClothCape {
         satisfyConstraint(c.a, c.b, c.rest);
       }
       this.pinCollar();
-      if (n % 2 === 1) this.shell.resolve(particles, free, false);
+      if (n % 2 === 1) this.shell.resolve(particles, free, false, _back);
     }
 
     this.keepOnBack();
     for (const p of particles) {
-      _hit.subVectors(p.position, p.previous);
-      const step = _hit.length();
-      if (step > MAX_STEP) {
-        p.position.copy(p.previous).addScaledVector(_hit, MAX_STEP / step);
-      }
       if (p.position.y < FLOOR_Y) {
         p.position.y = FLOOR_Y;
         p.previous.x += (p.position.x - p.previous.x) * FRICTION;
@@ -204,7 +202,16 @@ export class ClothCape {
     this.pinCollar();
     this.softYoke();
     this.keepOnBack();
-    this.shell.resolve(particles, free, true);
+    this.shell.resolve(particles, free, true, _back);
+    this.flattenSpikes();
+    for (let n = 0; n < 3; n++) {
+      for (const c of this.cloth.constraints) {
+        satisfyConstraint(c.a, c.b, c.rest);
+      }
+      this.pinCollar();
+    }
+    this.shell.resolve(particles, free, true, _back);
+    this.flattenSpikes();
     this.pinCollar();
   }
 
@@ -233,6 +240,40 @@ export class ClothCape {
     }
   }
 
+  /** Pull isolated vertices back toward their neighbors. */
+  private flattenSpikes(): void {
+    const { w, h, particles } = this.cloth;
+    for (let v = 1; v <= h; v++) {
+      for (let u = 0; u <= w; u++) {
+        const p = particles[this.cloth.index(u, v)];
+        _avg.set(0, 0, 0);
+        let n = 0;
+        if (u > 0) {
+          _avg.add(particles[this.cloth.index(u - 1, v)].position);
+          n++;
+        }
+        if (u < w) {
+          _avg.add(particles[this.cloth.index(u + 1, v)].position);
+          n++;
+        }
+        if (v > 0) {
+          _avg.add(particles[this.cloth.index(u, v - 1)].position);
+          n++;
+        }
+        if (v < h) {
+          _avg.add(particles[this.cloth.index(u, v + 1)].position);
+          n++;
+        }
+        if (n < 3) continue;
+        _avg.multiplyScalar(1 / n);
+        if (p.position.distanceTo(_avg) > SPIKE) {
+          p.position.lerp(_avg, 0.7);
+          p.previous.lerp(p.position, 0.25);
+        }
+      }
+    }
+  }
+
   private softYoke(): void {
     for (let u = 0; u <= this.cloth.w; u++) {
       cloakSurface(this.figure, u / this.cloth.w, 0.07, _yoke);
@@ -250,15 +291,5 @@ export class ClothCape {
     }
     pos.needsUpdate = true;
     this.geometry.computeVertexNormals();
-    const nrm = this.geometry.attributes.normal;
-    for (let i = 0; i < this.cloth.particles.length; i++) {
-      pos.setXYZ(
-        i,
-        pos.getX(i) + nrm.getX(i) * SKIN,
-        pos.getY(i) + nrm.getY(i) * SKIN,
-        pos.getZ(i) + nrm.getZ(i) * SKIN,
-      );
-    }
-    pos.needsUpdate = true;
   }
 }

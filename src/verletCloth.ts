@@ -173,16 +173,23 @@ export function projectOutSphere(
   center: Vector3,
   radius: number,
   settle = false,
+  prefer?: Vector3,
 ): void {
   _diff.subVectors(particle.position, center);
   const dist = _diff.length();
-  if (dist === 0) {
-    particle.position.x += radius;
-    return;
+  if (dist >= radius && dist > 0) return;
+  if (dist < 1e-8) {
+    _push.copy(prefer ?? _diff).setLength(1);
+    if (_push.lengthSq() < 1e-8) _push.set(0, 0, -1);
+  } else {
+    _push.copy(_diff).multiplyScalar(1 / dist);
+    if (prefer && _push.dot(prefer) < 0.2) _push.copy(prefer).normalize();
   }
-  if (dist >= radius) return;
-  _push.copy(_diff).multiplyScalar(1 / dist);
-  applyLift(particle, _push, radius - dist, settle);
+  _delta.copy(center).addScaledVector(_push, radius).sub(particle.position);
+  const lift = _delta.length();
+  if (lift < 1e-10) return;
+  _push.copy(_delta).multiplyScalar(1 / lift);
+  applyLift(particle, _push, lift, settle);
 }
 
 /** Hard projection out of a bone capsule (segment + radius). */
@@ -192,6 +199,7 @@ export function projectOutCapsule(
   b: Vector3,
   radius: number,
   settle = false,
+  prefer?: Vector3,
 ): void {
   _seg.subVectors(b, a);
   const lenSq = _seg.lengthSq();
@@ -200,7 +208,7 @@ export function projectOutCapsule(
     t = Math.min(1, Math.max(0, _toA.subVectors(particle.position, a).dot(_seg) / lenSq));
   }
   _closest.copy(a).addScaledVector(_seg, t);
-  projectOutSphere(particle, _closest, radius, settle);
+  projectOutSphere(particle, _closest, radius, settle, prefer);
 }
 
 /**
@@ -215,6 +223,7 @@ export function projectOutBox(
   hy: number,
   hz: number,
   settle = false,
+  preferBack = false,
 ): void {
   _invRot.copy(rotation).invert();
   _local.copy(particle.position).sub(center).applyQuaternion(_invRot);
@@ -223,15 +232,23 @@ export function projectOutBox(
   const az = Math.abs(_local.z);
   if (ax >= hx || ay >= hy || az >= hz) return;
 
-  const dx = hx - ax;
-  const dy = hy - ay;
-  const dz = hz - az;
-  if (dx <= dy && dx <= dz) {
-    _local.x = (_local.x >= 0 ? 1 : -1) * hx;
-  } else if (dy <= dz) {
-    _local.y = (_local.y >= 0 ? 1 : -1) * hy;
+  if (preferBack) {
+    if (ax > hx * 0.62) {
+      _local.x = (_local.x >= 0 ? 1 : -1) * hx;
+    } else {
+      _local.z = -hz;
+    }
   } else {
-    _local.z = (_local.z >= 0 ? 1 : -1) * hz;
+    const dx = hx - ax;
+    const dy = hy - ay;
+    const dz = hz - az;
+    if (dx <= dy && dx <= dz) {
+      _local.x = (_local.x >= 0 ? 1 : -1) * hx;
+    } else if (dy <= dz) {
+      _local.y = (_local.y >= 0 ? 1 : -1) * hy;
+    } else {
+      _local.z = (_local.z >= 0 ? 1 : -1) * hz;
+    }
   }
 
   _delta.copy(_local).applyQuaternion(rotation).add(center);
