@@ -37,7 +37,7 @@ export type WearId =
   | "shield"
   | "jetpack";
 
-const COLLECT_RANGE = 0.62;
+const COLLECT_RANGE = 0.85;
 const BOB = 0.014;
 
 interface PairBind {
@@ -187,7 +187,7 @@ const SPECS: WearSpec[] = [
     slot: "back",
     title: "jetpack",
     found: "Found a jetpack — double-tap grass to fly, or tap the glowing window",
-    lawn: new Vector3(0.05, 0.12, -2.15),
+    lawn: new Vector3(-3.55, 0.14, 1.15),
     bone: "chest",
     wearPos: new Vector3(0, 0.12, -0.16),
     wearRot: new Vector3(0, 0, 0),
@@ -303,11 +303,12 @@ class WearItem {
     this.root.traverse((object) => {
       if ((object as Mesh).isMesh) this.pickMeshes.push(object as Mesh);
     });
+    const jet = spec.id === "jetpack";
     this.glint = new Mesh(
-      new SphereGeometry(0.018, 10, 8),
-      new MeshBasicMaterial({ color: "#f0d48a" }),
+      new SphereGeometry(jet ? 0.055 : 0.036, 12, 10),
+      new MeshBasicMaterial({ color: jet ? "#ffe08a" : "#f4d592" }),
     );
-    this.glint.position.set(0.02, 0.09, 0.03);
+    this.glint.position.set(0, jet ? 0.32 : 0.2, 0);
     this.root.add(this.glint);
     this.pickMeshes.push(this.glint);
   }
@@ -521,12 +522,12 @@ function buildShield(): Group {
 
 function buildJetpack(): BuiltWearable {
   const root = new Group();
-  const tank = mat("#4a5560", { metalness: 0.45, roughness: 0.35 });
+  const tank = mat("#c45a22", { metalness: 0.42, roughness: 0.36 });
   const strap = mat("#2a1c14", { roughness: 0.8 });
-  add(root, new Mesh(new CylinderGeometry(0.045, 0.05, 0.22, 14), tank)).position.set(-0.055, 0, 0);
-  add(root, new Mesh(new CylinderGeometry(0.045, 0.05, 0.22, 14), tank)).position.set(0.055, 0, 0);
-  add(root, new Mesh(new BoxGeometry(0.16, 0.08, 0.06), tank)).position.set(0, 0.02, 0.02);
-  add(root, new Mesh(new BoxGeometry(0.2, 0.03, 0.04), strap)).position.set(0, 0.08, 0.05);
+  add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.26, 14), tank)).position.set(-0.068, 0, 0);
+  add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.26, 14), tank)).position.set(0.068, 0, 0);
+  add(root, new Mesh(new BoxGeometry(0.2, 0.1, 0.07), tank)).position.set(0, 0.02, 0.02);
+  add(root, new Mesh(new BoxGeometry(0.24, 0.035, 0.045), strap)).position.set(0, 0.1, 0.055);
   const flameMat = new MeshBasicMaterial({ color: "#ff8a2a" });
   const left = new Mesh(new ConeGeometry(0.028, 0.12, 10), flameMat);
   const right = new Mesh(new ConeGeometry(0.028, 0.12, 10), flameMat);

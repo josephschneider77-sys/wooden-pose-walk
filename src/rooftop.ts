@@ -139,12 +139,24 @@ export function createRooftop(): Group {
 
   const returnGlow = new Mesh(
     new PlaneGeometry(2.4, 3.5),
-    new MeshBasicMaterial({ color: new Color(3.2, 2.6, 1.7) }),
+    new MeshBasicMaterial({
+      color: "#e8c888",
+      transparent: true,
+      opacity: 0.32,
+    }),
   );
   returnGlow.position.set(WINDOW_X, 3.15, WINDOW_Z);
   returnGlow.rotation.y = Math.PI / 2;
-  returnGlow.name = "returnWindow";
   root.add(returnGlow);
+
+  const returnPick = new Mesh(
+    new PlaneGeometry(3.2, 4.2),
+    new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  returnPick.position.set(WINDOW_X + 0.04, 3.15, WINDOW_Z);
+  returnPick.rotation.y = Math.PI / 2;
+  returnPick.name = "returnWindow";
+  root.add(returnPick);
 
   return root;
 }

@@ -232,9 +232,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
     const wearHover = wardrobe.hit(raycaster);
-    const onWindow =
-      pickWindow(raycaster, activeWindow()) &&
-      (wardrobe.isWorn("jetpack") || world === "roof");
+    const onWindow = pickWindow(raycaster, activeWindow());
     canvas.style.cursor = hover ? "grab" : wearHover || onWindow ? "pointer" : "";
     if (!grab) {
       if (hover) {
@@ -243,8 +241,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         hint.textContent = `Tap to take off the ${wearHover.title}`;
       } else if (wearHover) {
         hint.textContent = `Walk over to put on the ${wearHover.title}`;
-      } else if (onWindow) {
+      } else if (onWindow && (wardrobe.isWorn("jetpack") || world === "roof")) {
         hint.textContent = "Tap to fly through the window";
+      } else if (onWindow) {
+        hint.textContent = "The jetpack is by the window — walk to it first";
       } else {
         hint.textContent = restHint;
       }
@@ -296,15 +296,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       hint.textContent = `Walking to the ${wearHit.title}`;
       return;
     }
-    if (
-      pickWindow(raycaster, activeWindow()) &&
-      (wardrobe.isWorn("jetpack") || world === "roof")
-    ) {
+    if (pickWindow(raycaster, activeWindow())) {
       if (wardrobe.isWorn("jetpack")) {
         setDestination(walker, rooms.portalApproach, true, 2.55);
         hint.textContent = "Flying through the window";
+      } else if (world === "roof") {
+        enterWorld("lawn");
       } else {
-        enterWorld(world === "lawn" ? "roof" : "lawn");
+        wardrobe.walkTarget("jetpack", floorPoint);
+        floorPoint.y = 0;
+        setDestination(walker, floorPoint);
+        hint.textContent = "Walking to the jetpack — then tap the window";
       }
       return;
     }
@@ -382,6 +384,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
     const jet = wardrobe.isWorn("jetpack");
     const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet);
+    if (
+      jet &&
+      !walker.fly &&
+      time - lastPortal > 1.3 &&
+      nearPortalApproach(figure.root.position)
+    ) {
+      setDestination(walker, rooms.portalApproach, true, 2.55);
+      hint.textContent = "Flying through the window";
+    }
     if (flying && time - lastPortal > 1.3 && throughPortal(figure.root.position)) {
       enterWorld(world === "lawn" ? "roof" : "lawn");
     }
@@ -454,6 +465,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     cape.update(dt, time, walker.speed, walker.yaw);
     const found = wardrobe.update(time);
     if (found && !grab) hint.textContent = found;
+    if (
+      found?.includes("jetpack") &&
+      world === "lawn" &&
+      figure.root.position.x < -2.4
+    ) {
+      setDestination(walker, rooms.portalApproach, true, 2.55);
+      hint.textContent = "Flying through the window";
+    }
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;
@@ -518,6 +537,10 @@ function pickWindow(raycaster: Raycaster, pane: Mesh): boolean {
 
 function throughPortal(pos: Vector3): boolean {
   return pos.x < PORTAL.x + 0.7 && Math.abs(pos.z - PORTAL.z) < PORTAL.halfW && pos.y > 0.4;
+}
+
+function nearPortalApproach(pos: Vector3): boolean {
+  return pos.x < -7.15 && Math.abs(pos.z - PORTAL.z) < PORTAL.halfW;
 }
 
 function applyWorld(
@@ -591,15 +614,33 @@ function buildRooms(scene: Scene): {
   const windowGlow = new Mesh(
     new PlaneGeometry(2.4, 3.5),
     new MeshBasicMaterial({
-      color: new Color(3.1, 2.7, 2.15),
+      color: "#e8c888",
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.28,
     }),
   );
   windowGlow.position.set(PORTAL.x, PORTAL.y, PORTAL.z);
   windowGlow.rotation.y = Math.PI / 2;
-  windowGlow.name = "studioWindow";
   lawn.add(windowGlow);
+
+  const windowPick = new Mesh(
+    new PlaneGeometry(3.2, 4.2),
+    new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  );
+  windowPick.position.set(PORTAL.x + 0.04, PORTAL.y, PORTAL.z);
+  windowPick.rotation.y = Math.PI / 2;
+  windowPick.name = "studioWindow";
+  lawn.add(windowPick);
+
+  const mullion = createWoodMaterial({ kind: "ebony", seed: 11, size: 128 });
+  const bar = (w: number, h: number, y: number, z: number) => {
+    const mesh = new Mesh(new PlaneGeometry(w, h), mullion);
+    mesh.position.set(PORTAL.x + 0.01, y, z);
+    mesh.rotation.y = Math.PI / 2;
+    lawn.add(mesh);
+  };
+  bar(2.4, 0.07, PORTAL.y, PORTAL.z);
+  bar(0.07, 3.5, PORTAL.y, PORTAL.z);
 
   const frame = createWoodMaterial({ kind: "ebony", seed: 8, size: 256 });
   const lintel = (w: number, h: number, y: number, z: number) => {
@@ -650,7 +691,7 @@ function buildRooms(scene: Scene): {
     sky,
     lawn,
     roof,
-    window: windowGlow,
+    window: windowPick,
     returnWindow,
     portalApproach: new Vector3(-10.5, 0, PORTAL.z),
   };
