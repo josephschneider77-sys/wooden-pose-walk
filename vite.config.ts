@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "./",
+  base: "/wooden-pose-walk/",
   server: {
     host: true,
     port: 43217,

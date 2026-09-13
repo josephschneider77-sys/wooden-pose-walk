@@ -1,8 +1,9 @@
 {
-  "name": "mannequin-walk",
+  "name": "wooden-pose-walk",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "homepage": "https://josephschneider77-sys.github.io/wooden-pose-walk/",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

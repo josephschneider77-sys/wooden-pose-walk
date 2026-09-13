@@ -23,14 +23,18 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (default port **43217**).
+Then open the URL Vite prints (default port **43217**, path `/wooden-pose-walk/`).
 
 ```bash
 npm run build
 npm run preview
 ```
 
-`npm run build` writes a static `dist/` folder. The Vite `base` is `./`, so the build is ready for GitHub Pages or any static host.
+## Play
+
+https://josephschneider77-sys.github.io/wooden-pose-walk/
+
+Source of truth stays on Origin. The public play link is GitHub Pages from [`josephschneider77-sys/wooden-pose-walk`](https://github.com/josephschneider77-sys/wooden-pose-walk) (`gh-pages` branch + Actions). Vite `base` is `/wooden-pose-walk/`.
 
 ## How the feet work
 
