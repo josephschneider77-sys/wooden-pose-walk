@@ -15,12 +15,12 @@ import { satisfyConstraint, VerletCloth } from "./verletCloth";
 const WIDTH_SEGS = 18;
 const HEIGHT_SEGS = 22;
 const CAPE_LENGTH = 0.98;
-const MASS = 0.1;
-const GRAVITY = new Vector3(0, -22, 0);
+const MASS = 1.4;
+const GRAVITY = new Vector3(0, -30, 0);
 const TIMESTEP = 1 / 60;
 const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 const ITERATIONS = 8;
-const FRICTION = 0.55;
+const FRICTION = 0.72;
 const SPIKE = 0.055;
 const FLOOR_Y = 0.03;
 const COLLAR_A0 = Math.PI * 0.4;
@@ -156,9 +156,9 @@ export class ClothCape {
     const index = this.geometry.index;
     const normals = this.geometry.attributes.normal;
 
-    _wind.set(Math.sin(time * 1.4), 0.08, Math.cos(time * 0.9)).multiplyScalar(0.12);
-    _wind.x += Math.sin(yaw) * walkSpeed * 0.45;
-    _wind.z += Math.cos(yaw) * walkSpeed * 0.45;
+    _wind.set(Math.sin(time * 1.4), 0.05, Math.cos(time * 0.9)).multiplyScalar(0.035);
+    _wind.x += Math.sin(yaw) * walkSpeed * 0.12;
+    _wind.z += Math.cos(yaw) * walkSpeed * 0.12;
 
     if (index) {
       for (let i = 0, il = index.count; i < il; i += 3) {

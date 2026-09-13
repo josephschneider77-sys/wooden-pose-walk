@@ -5,10 +5,10 @@ import { Quaternion, Vector3 } from "three";
  * (aatishb/drape, MIT): skip-neighbor bending springs and frictional
  * contact. https://github.com/aatishb/drape
  */
-const DAMPING = 0.08;
+const DAMPING = 0.2;
 const DRAG = 1 - DAMPING;
 /** Drape restDistanceB — longer bending rest lets the sheet sag into folds. */
-const BEND_SLACK = 1.06;
+const BEND_SLACK = 1.03;
 
 export class ClothParticle {
   readonly position = new Vector3();
@@ -164,7 +164,7 @@ function applyLift(particle: ClothParticle, normal: Vector3, lift: number, settl
   _vel.subVectors(particle.position, particle.previous);
   const inward = _vel.dot(normal);
   if (inward < 0) particle.previous.addScaledVector(normal, inward);
-  particle.previous.lerp(particle.position, 0.18);
+  particle.previous.lerp(particle.position, 0.32);
 }
 
 /** Hard projection so cloth cannot remain inside a sphere. */
