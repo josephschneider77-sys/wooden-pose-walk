@@ -36,6 +36,15 @@ https://josephschneider77-sys.github.io/wooden-pose-walk/
 
 Source of truth stays on Origin. The public play link is GitHub Pages from [`josephschneider77-sys/wooden-pose-walk`](https://github.com/josephschneider77-sys/wooden-pose-walk) (`gh-pages` branch + Actions). Vite `base` is `/wooden-pose-walk/`.
 
+### CoS / github.io tip
+
+If project Pages lags, copy the production payload onto the user site at `wooden-pose-walk/`:
+
+- Folder (already the `dist/` contents): [`pages-export/`](pages-export/)
+- Zip of that folder: [`wooden-pose-walk-pages.zip`](wooden-pose-walk-pages.zip)
+
+Unzip so files land at `josephschneider77-sys.github.io/wooden-pose-walk/index.html` (not a nested extra `dist/` directory). Include `.nojekyll`.
+
 ## How the feet work
 
 The walk cycle is a source pose (procedural). Inverse kinematics is applied as a **modification**, not a replacement:
