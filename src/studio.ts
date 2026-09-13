@@ -475,6 +475,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       applyHolds(walkWeight);
     }
     wardrobe.setThrust(flying, time);
+    cape.setPack(jet);
 
     const focus = grab?.id ?? hover;
     if (focus) {

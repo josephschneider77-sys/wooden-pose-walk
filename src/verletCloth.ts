@@ -258,3 +258,28 @@ export function projectOutBox(
   _push.copy(_delta).multiplyScalar(1 / lift);
   applyLift(particle, _push, lift, settle);
 }
+
+/**
+ * Keep cloth on the body side of a backpack. Chest local +Z is forward,
+ * so the pack's +Z face is the underside that sits on the cloak.
+ */
+export function projectUnderPack(
+  particle: ClothParticle,
+  center: Vector3,
+  rotation: Quaternion,
+  hx: number,
+  hy: number,
+  hz: number,
+  settle = false,
+): void {
+  _invRot.copy(rotation).invert();
+  _local.copy(particle.position).sub(center).applyQuaternion(_invRot);
+  if (Math.abs(_local.x) >= hx || Math.abs(_local.y) >= hy || Math.abs(_local.z) >= hz) return;
+  _local.z = hz;
+  _delta.copy(_local).applyQuaternion(rotation).add(center);
+  _delta.sub(particle.position);
+  const lift = _delta.length();
+  if (lift < 1e-10) return;
+  _push.copy(_delta).multiplyScalar(1 / lift);
+  applyLift(particle, _push, lift, settle);
+}

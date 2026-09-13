@@ -189,7 +189,7 @@ const SPECS: WearSpec[] = [
     found: "Found a jetpack — double-tap grass to fly, or tap the glowing window",
     lawn: new Vector3(-3.55, 0.14, 1.15),
     bone: "chest",
-    wearPos: new Vector3(0, 0.12, -0.16),
+    wearPos: new Vector3(0, 0.14, -0.26),
     wearRot: new Vector3(0, 0, 0),
     drop: new Vector3(0, 0, -0.55),
   },
@@ -524,6 +524,20 @@ function buildShield(): Group {
   return group;
 }
 
+function paintPack(root: Group): void {
+  root.traverse((object) => {
+    const mesh = object as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.renderOrder = 8;
+    mesh.frustumCulled = false;
+    const material = mesh.material as MeshPhysicalMaterial | MeshBasicMaterial;
+    material.depthWrite = true;
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -8;
+    material.polygonOffsetUnits = -8;
+  });
+}
+
 function buildJetpack(): BuiltWearable {
   const root = new Group();
   const tank = mat("#c45a22", { metalness: 0.42, roughness: 0.36 });
@@ -542,5 +556,6 @@ function buildJetpack(): BuiltWearable {
   left.visible = false;
   right.visible = false;
   root.add(left, right);
+  paintPack(root);
   return { root, flames: [left, right] };
 }

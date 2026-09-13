@@ -3,6 +3,7 @@ import {
   Mesh,
   MeshPhysicalMaterial,
   PlaneGeometry,
+  Quaternion,
   RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
@@ -10,7 +11,7 @@ import {
 } from "three";
 import type { WoodenMannequin } from "./mannequin";
 import { BodyShell } from "./bodyShell";
-import { satisfyConstraint, VerletCloth } from "./verletCloth";
+import { projectUnderPack, satisfyConstraint, VerletCloth } from "./verletCloth";
 
 const WIDTH_SEGS = 18;
 const HEIGHT_SEGS = 22;
@@ -37,6 +38,14 @@ const _yoke = new Vector3();
 const _side = new Vector3();
 const _back = new Vector3();
 const _avg = new Vector3();
+const _packCenter = new Vector3();
+const _packRot = new Quaternion();
+
+/** Chest-local seat of the worn jetpack — cloth tucks under this box. */
+const PACK_LOCAL = new Vector3(0, 0.14, -0.26);
+const PACK_HX = 0.16;
+const PACK_HY = 0.18;
+const PACK_HZ = 0.1;
 
 function bodyFrame(
   figure: WoodenMannequin,
@@ -82,6 +91,7 @@ export class ClothCape {
   private readonly cloth: VerletCloth;
   private readonly geometry: PlaneGeometry;
   private readonly shell = new BodyShell();
+  private packOn = false;
 
   constructor(figure: WoodenMannequin) {
     this.figure = figure;
@@ -117,6 +127,10 @@ export class ClothCape {
     this.pinCollar();
     for (let i = 0; i < 48; i++) this.step(1 / 60, 0, 0, 0);
     this.writeGeometry();
+  }
+
+  setPack(on: boolean): void {
+    this.packOn = on;
   }
 
   update(dt: number, time: number, walkSpeed: number, yaw: number): void {
@@ -201,7 +215,10 @@ export class ClothCape {
         satisfyConstraint(c.a, c.b, c.rest);
       }
       this.pinCollar();
-      if (n % 2 === 1) this.shell.resolve(particles, free, false, _back);
+      if (n % 2 === 1) {
+        this.shell.resolve(particles, free, false, _back);
+        this.tuckUnderPack(particles, free, false);
+      }
     }
 
     this.keepOnBack();
@@ -217,6 +234,7 @@ export class ClothCape {
     this.softYoke();
     this.keepOnBack();
     this.shell.resolve(particles, free, true, _back);
+    this.tuckUnderPack(particles, free, true);
     this.flattenSpikes();
     for (let n = 0; n < 3; n++) {
       for (const c of this.cloth.constraints) {
@@ -225,8 +243,20 @@ export class ClothCape {
       this.pinCollar();
     }
     this.shell.resolve(particles, free, true, _back);
+    this.tuckUnderPack(particles, free, true);
     this.flattenSpikes();
     this.pinCollar();
+  }
+
+  private tuckUnderPack(particles: typeof this.cloth.particles, skip: number, settle: boolean): void {
+    if (!this.packOn) return;
+    const chest = this.figure.bone("chest");
+    _packCenter.copy(PACK_LOCAL);
+    chest.localToWorld(_packCenter);
+    chest.getWorldQuaternion(_packRot);
+    for (let i = skip; i < particles.length; i++) {
+      projectUnderPack(particles[i], _packCenter, _packRot, PACK_HX, PACK_HY, PACK_HZ, settle);
+    }
   }
 
   private keepOnBack(): void {
