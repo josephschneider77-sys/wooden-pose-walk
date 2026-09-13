@@ -43,3 +43,12 @@ body,
   color: #2f4a22;
   text-shadow: 0 1px 0 rgba(230, 240, 210, 0.75);
 }
+
+body.night {
+  background: #0b1220;
+}
+
+.hint.night {
+  color: #dce6ff;
+  text-shadow: 0 1px 0 rgba(8, 12, 22, 0.85);
+}

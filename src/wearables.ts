@@ -10,7 +10,7 @@ import {
   TorusGeometry,
   Vector3,
 } from "three";
-import type { Object3D, Raycaster, Scene } from "three";
+import type { Object3D, Raycaster } from "three";
 import type { BoneName, WoodenMannequin } from "./mannequin";
 
 export type WearSlot =
@@ -186,7 +186,7 @@ const SPECS: WearSpec[] = [
     id: "jetpack",
     slot: "back",
     title: "jetpack",
-    found: "Found a jetpack — double-tap the grass to fly",
+    found: "Found a jetpack — double-tap grass to fly, or tap the glowing window",
     lawn: new Vector3(0.05, 0.12, -2.15),
     bone: "chest",
     wearPos: new Vector3(0, 0.12, -0.16),
@@ -203,15 +203,15 @@ export interface WearHit {
 
 export class LawnWardrobe {
   private readonly figure: WoodenMannequin;
-  private readonly scene: Scene;
+  private readonly ground: Object3D;
   private readonly items: WearItem[];
   private readonly scratch = new Vector3();
 
-  constructor(scene: Scene, figure: WoodenMannequin) {
-    this.scene = scene;
+  constructor(ground: Object3D, figure: WoodenMannequin) {
+    this.ground = ground;
     this.figure = figure;
     this.items = SPECS.map((spec) => new WearItem(spec));
-    for (const item of this.items) scene.add(item.root);
+    for (const item of this.items) ground.add(item.root);
   }
 
   isWorn(id: WearId): boolean {
@@ -257,7 +257,7 @@ export class LawnWardrobe {
     const item = this.items.find((entry) => entry.spec.id === id && entry.worn);
     if (!item) return null;
     this.figure.root.getWorldPosition(this.scratch);
-    item.drop(this.scene, this.scratch, this.figure.bone("root").rotation.y);
+    item.drop(this.ground, this.scratch, this.figure.bone("root").rotation.y);
     return `Took off the ${item.spec.title}`;
   }
 
@@ -267,7 +267,7 @@ export class LawnWardrobe {
     );
     if (occupant) {
       this.figure.root.getWorldPosition(this.scratch);
-      occupant.drop(this.scene, this.scratch, this.figure.bone("root").rotation.y);
+      occupant.drop(this.ground, this.scratch, this.figure.bone("root").rotation.y);
     }
     item.attach(this.figure);
     return item.spec.found;
@@ -353,7 +353,7 @@ class WearItem {
     this.worn = true;
   }
 
-  drop(scene: Scene, figurePos: Vector3, yaw: number): void {
+  drop(ground: Object3D, figurePos: Vector3, yaw: number): void {
     if (this.spec.pair && this.leftPart && this.rightPart) {
       this.leftPart.removeFromParent();
       this.rightPart.removeFromParent();
@@ -375,7 +375,7 @@ class WearItem {
     );
     this.root.position.copy(this.lawn);
     this.root.rotation.set(0, yaw, 0);
-    scene.add(this.root);
+    ground.add(this.root);
     this.worn = false;
   }
 }

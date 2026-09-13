@@ -125,6 +125,20 @@ export class ClothCape {
     this.writeGeometry();
   }
 
+  /** Re-drape on the figure after a teleport so Verlet springs do not explode. */
+  snap(): void {
+    this.figure.refreshWorld();
+    for (let v = 0; v <= this.cloth.h; v++) {
+      for (let u = 0; u <= this.cloth.w; u++) {
+        const p = this.cloth.particles[this.cloth.index(u, v)];
+        cloakSurface(this.figure, u / this.cloth.w, v / this.cloth.h, p.position);
+        p.previous.copy(p.position);
+      }
+    }
+    this.pinCollar();
+    this.writeGeometry();
+  }
+
   private loadFabric(material: MeshPhysicalMaterial): void {
     const base = import.meta.env.BASE_URL;
     const loader = new TextureLoader();
