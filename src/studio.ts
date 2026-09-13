@@ -45,6 +45,7 @@ import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
+import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
 const ROOM = 8.4;
@@ -99,7 +100,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   void attachRealisticFace(figure);
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
+  const wardrobe = new LawnWardrobe(scene, figure);
   const pickList = figure.pickables();
+  const restHint = "Walk to the beret or sunglasses on the lawn";
 
   const walker = createWalker();
   figure.refreshWorld();
@@ -210,11 +213,20 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     hover = pickLimb(event);
-    canvas.style.cursor = hover ? "grab" : "";
+    setPointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    const wearHover = wardrobe.hit(raycaster);
+    canvas.style.cursor = hover ? "grab" : wearHover ? "pointer" : "";
     if (!grab) {
-      hint.textContent = hover
-        ? `Drag the ${limbLabel(hover)} to pose it`
-        : "Grab an arm or a leg to pose it";
+      if (hover) {
+        hint.textContent = `Drag the ${limbLabel(hover)} to pose it`;
+      } else if (wearHover?.worn) {
+        hint.textContent = `Tap to take off the ${wearHover.title}`;
+      } else if (wearHover) {
+        hint.textContent = `Walk over to put on the ${wearHover.title}`;
+      } else {
+        hint.textContent = restHint;
+      }
     }
   });
 
@@ -233,6 +245,20 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     if (pointerState.moved) return;
+    setPointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    const wearHit = wardrobe.hit(raycaster);
+    if (wearHit?.worn) {
+      hint.textContent = wardrobe.takeOff(wearHit.id) ?? restHint;
+      return;
+    }
+    if (wearHit) {
+      wardrobe.walkTarget(wearHit.id, floorPoint);
+      floorPoint.y = 0;
+      setDestination(walker, floorPoint);
+      hint.textContent = `Walking to the ${wearHit.title}`;
+      return;
+    }
     if (pickFloor(event, camera, raycaster, pointer, floorPoint)) {
       floorPoint.x = clamp(floorPoint.x, -ROOM, ROOM);
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
@@ -350,6 +376,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     cape.update(dt, time, walker.speed, walker.yaw);
+    const found = wardrobe.update(time);
+    if (found && !grab) hint.textContent = found;
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;

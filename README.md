@@ -8,10 +8,13 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the floor** — walk there
+- **Walk to the beret or sunglasses** — put them on (tap a worn item to take it off)
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
 Posed arms stay while walking. Posed legs return when the figure is idle. Refresh the page to reset the pose.
+
+This branch is a small **find-and-wear** experiment (beret + sunglasses) kept off `main`. One item per slot; picking a second hat or glasses drops the first back on the grass.
 
 ## Run locally
 
