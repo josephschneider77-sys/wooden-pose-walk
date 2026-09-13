@@ -147,6 +147,7 @@ export class WoodenMannequin {
   readonly heelMinHeight: number;
   readonly toeMinHeight: number;
   readonly toeEndMinHeight: number;
+  skull: Mesh | null = null;
 
   private readonly wood = createWoodMaterial({
     kind: "walnut",
@@ -427,6 +428,7 @@ export class WoodenMannequin {
     const skull = addMesh(head, ball(0.1, this.wood));
     skull.scale.set(0.86, 1.18, 0.92);
     skull.position.y = 0.07;
+    this.skull = skull;
 
     this.buildArm("left", chest);
     this.buildArm("right", chest);

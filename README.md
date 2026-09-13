@@ -59,6 +59,7 @@ Recipes follow [Inverse Kinematics and Foot Locking](https://theorangeduck.com/p
 - Engine: [Three.js](https://threejs.org/) (MIT)
 - Cloak: Verlet cloth from the official [three.js cloth example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_cloth.html) (MIT)
 - Cloak fabric: [ambientCG Fabric008](https://ambientcg.com/view?id=Fabric008) (CC0)
-- Character: original procedural wooden mannequin in this repo (no third-party mesh)
+- Body: original procedural wooden mannequin in this repo (no third-party mesh)
+- Face: [Infinite 3D Head Scan](https://www.ir-ltd.net/) by Lee Perry-Smith / Infinite Realities (CC BY 3.0), via the [three.js LeePerrySmith example](https://github.com/mrdoob/three.js/tree/r182/examples/models/gltf/LeePerrySmith)
 - Look: walnut / ebony / plaster PBR identities and studio lighting from [scottstts/Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) (`threejs-procedural-materials`, `threejs-shadow-systems`, `threejs-image-pipeline`)
 - Lawn: [ambientCG Grass001](https://ambientcg.com/view?id=Grass001) (CC0) plus short instanced blades from the stylized meadow-grass skill

@@ -42,6 +42,7 @@ import {
   WoodenMannequin,
 } from "./mannequin";
 import { clamp } from "./math";
+import { attachRealisticFace } from "./face";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
@@ -95,6 +96,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
+  void attachRealisticFace(figure);
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
   const pickList = figure.pickables();
