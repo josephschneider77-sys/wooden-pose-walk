@@ -189,7 +189,7 @@ const SPECS: WearSpec[] = [
     found: "Found a jetpack — double-tap grass to fly, or tap the glowing window",
     lawn: new Vector3(-3.55, 0.14, 1.15),
     bone: "chest",
-    wearPos: new Vector3(0, 0.14, -0.26),
+    wearPos: new Vector3(0, 0.22, -0.3),
     wearRot: new Vector3(0, 0, 0),
     drop: new Vector3(0, 0, -0.55),
   },
@@ -255,6 +255,12 @@ export class LawnWardrobe {
     const item = this.items.find((entry) => entry.spec.id === id);
     if (!item || item.worn) return out;
     return out.copy(item.lawn);
+  }
+
+  forceWear(id: WearId): string | null {
+    const item = this.items.find((entry) => entry.spec.id === id);
+    if (!item || item.worn) return null;
+    return this.wear(item);
   }
 
   takeOff(id: WearId): string | null {
@@ -540,19 +546,28 @@ function paintPack(root: Group): void {
 
 function buildJetpack(): BuiltWearable {
   const root = new Group();
-  const tank = mat("#c45a22", { metalness: 0.42, roughness: 0.36 });
+  const tank = mat("#ee6a1a", { metalness: 0.38, roughness: 0.32 });
   const strap = mat("#2a1c14", { roughness: 0.8 });
-  add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.26, 14), tank)).position.set(-0.068, 0, 0);
-  add(root, new Mesh(new CylinderGeometry(0.055, 0.06, 0.26, 14), tank)).position.set(0.068, 0, 0);
-  add(root, new Mesh(new BoxGeometry(0.2, 0.1, 0.07), tank)).position.set(0, 0.02, 0.02);
-  add(root, new Mesh(new BoxGeometry(0.24, 0.035, 0.045), strap)).position.set(0, 0.1, 0.055);
+  add(root, new Mesh(new CylinderGeometry(0.07, 0.076, 0.34, 16), tank)).position.set(-0.082, 0, 0);
+  add(root, new Mesh(new CylinderGeometry(0.07, 0.076, 0.34, 16), tank)).position.set(0.082, 0, 0);
+  add(root, new Mesh(new SphereGeometry(0.07, 12, 10), tank)).position.set(-0.082, 0.17, 0);
+  add(root, new Mesh(new SphereGeometry(0.07, 12, 10), tank)).position.set(0.082, 0.17, 0);
+  add(root, new Mesh(new BoxGeometry(0.24, 0.12, 0.08), tank)).position.set(0, 0.02, 0.03);
+  const over = (x: number) => {
+    const band = add(root, new Mesh(new CylinderGeometry(0.014, 0.014, 0.34, 8), strap));
+    band.position.set(x, 0.08, 0.12);
+    band.rotation.x = 1.05;
+  };
+  over(-0.1);
+  over(0.1);
+  add(root, new Mesh(new BoxGeometry(0.28, 0.04, 0.05), strap)).position.set(0, 0.14, 0.06);
   const flameMat = new MeshBasicMaterial({ color: "#ff8a2a" });
   const left = new Mesh(new ConeGeometry(0.028, 0.12, 10), flameMat);
   const right = new Mesh(new ConeGeometry(0.028, 0.12, 10), flameMat);
   left.rotation.x = Math.PI;
   right.rotation.x = Math.PI;
-  left.position.set(-0.055, -0.16, 0);
-  right.position.set(0.055, -0.16, 0);
+  left.position.set(-0.082, -0.22, 0);
+  right.position.set(0.082, -0.22, 0);
   left.visible = false;
   right.visible = false;
   root.add(left, right);

@@ -106,6 +106,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(rooms.lawn, figure);
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("wear") === "jetpack") {
+    wardrobe.forceWear("jetpack");
+    cape.setPack(true);
+  }
   const pickList = figure.pickables();
   const restHint =
     "Collect every find on the lawn · the window keeps its frame until then";

@@ -42,10 +42,10 @@ const _packCenter = new Vector3();
 const _packRot = new Quaternion();
 
 /** Chest-local seat of the worn jetpack — cloth tucks under this box. */
-const PACK_LOCAL = new Vector3(0, 0.14, -0.26);
-const PACK_HX = 0.16;
-const PACK_HY = 0.18;
-const PACK_HZ = 0.1;
+const PACK_LOCAL = new Vector3(0, 0.22, -0.3);
+const PACK_HX = 0.2;
+const PACK_HY = 0.22;
+const PACK_HZ = 0.12;
 
 function bodyFrame(
   figure: WoodenMannequin,
