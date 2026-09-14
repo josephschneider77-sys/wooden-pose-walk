@@ -8,11 +8,14 @@ import {
   MeshPhysicalMaterial,
   SphereGeometry,
   SRGBColorSpace,
+  Vector3,
   type Raycaster,
 } from "three";
 import type { LawnWardrobe } from "./wearables";
 
-const CHOP_RANGE = 0.95;
+const TOP_Y = 0.8;
+const HIT = 0.3;
+const TAKE_RANGE = 1.05;
 
 const FLESH = new MeshPhysicalMaterial({
   color: "#e02338",
@@ -23,7 +26,8 @@ const FLESH = new MeshPhysicalMaterial({
 const PALE = new MeshPhysicalMaterial({ color: "#f3d6be", roughness: 0.42 });
 const SEED = new MeshPhysicalMaterial({ color: "#1a1410", roughness: 0.55 });
 const STEM = new MeshPhysicalMaterial({ color: "#4a3218", roughness: 0.8 });
-const BOARD = new MeshPhysicalMaterial({ color: "#8b5a32", roughness: 0.62 });
+const TOP = new MeshPhysicalMaterial({ color: "#8b5a32", roughness: 0.58 });
+const LEG = new MeshPhysicalMaterial({ color: "#5c3a22", roughness: 0.7 });
 const STEEL = new MeshPhysicalMaterial({
   color: "#c5cdd4",
   metalness: 0.7,
@@ -45,6 +49,8 @@ const RIND = new MeshPhysicalMaterial({
   roughness: 0.7,
 });
 
+const _melon = new Vector3();
+
 export class MelonBoard {
   readonly root = new Group();
   chopped = false;
@@ -54,36 +60,48 @@ export class MelonBoard {
   private readonly picks: Mesh[] = [];
 
   constructor() {
-    this.root.name = "melonBoard";
-    this.root.position.set(0.55, 0, 2.45);
+    this.root.name = "melonTable";
+    this.root.position.set(0.7, 0, 2.55);
 
-    const block = new Mesh(new BoxGeometry(1.55, 0.14, 1.55), BOARD);
-    block.position.y = 0.07;
-    block.castShadow = true;
-    block.receiveShadow = true;
-    this.root.add(block);
-    this.picks.push(block);
+    const top = new Mesh(new BoxGeometry(1.7, 0.07, 1.15), TOP);
+    top.position.y = TOP_Y;
+    top.castShadow = true;
+    top.receiveShadow = true;
+    this.root.add(top);
+    this.picks.push(top);
 
-    const lip = new Mesh(new BoxGeometry(1.62, 0.04, 1.62), BOARD);
-    lip.position.y = 0.015;
-    this.root.add(lip);
+    const apron = new Mesh(new BoxGeometry(1.66, 0.08, 1.11), LEG);
+    apron.position.y = TOP_Y - 0.07;
+    this.root.add(apron);
+
+    for (const [x, z] of [
+      [-0.72, -0.46],
+      [0.72, -0.46],
+      [-0.72, 0.46],
+      [0.72, 0.46],
+    ] as const) {
+      const post = new Mesh(new BoxGeometry(0.08, TOP_Y - 0.02, 0.08), LEG);
+      post.position.set(x, (TOP_Y - 0.02) / 2, z);
+      post.castShadow = true;
+      this.root.add(post);
+    }
 
     for (const [x, z] of SPOTS) {
       const whole = wholeMelon();
-      whole.position.set(x, 0.24, z);
+      whole.position.set(x, TOP_Y + 0.2, z);
       this.wholes.add(whole);
       whole.traverse((object) => {
         if ((object as Mesh).isMesh) this.picks.push(object as Mesh);
       });
 
       const pile = choppedPile();
-      pile.position.set(x, 0.16, z);
+      pile.position.set(x, TOP_Y + 0.06, z);
       this.pieces.add(pile);
     }
 
-    this.looseKnife.add(boardKnife());
-    this.looseKnife.position.set(0.52, 0.16, -0.48);
-    this.looseKnife.rotation.set(0, 0.4, 1.2);
+    this.looseKnife.add(tableKnife());
+    this.looseKnife.position.set(0.62, TOP_Y + 0.04, -0.38);
+    this.looseKnife.rotation.set(0, 0.35, 1.15);
     this.looseKnife.traverse((object) => {
       if ((object as Mesh).isMesh) this.picks.push(object as Mesh);
     });
@@ -99,24 +117,34 @@ export class MelonBoard {
   inRange(x: number, z: number): boolean {
     const dx = x - this.root.position.x;
     const dz = z - this.root.position.z;
-    return dx * dx + dz * dz < CHOP_RANGE * CHOP_RANGE;
+    return dx * dx + dz * dz < TAKE_RANGE * TAKE_RANGE;
   }
 
   showLooseKnife(on: boolean): void {
     this.looseKnife.visible = on && !this.chopped;
   }
 
-  use(wardrobe: LawnWardrobe): string {
-    if (this.chopped) return "Watermelons chopped — nice and ready";
-    if (!wardrobe.isWorn("sword")) {
-      wardrobe.forceWear("sword");
-      this.looseKnife.visible = false;
-      return "Picked up the knife — tap the melons to chop";
-    }
-    return this.chop();
+  takeKnife(wardrobe: LawnWardrobe): string | null {
+    if (wardrobe.isWorn("sword")) return null;
+    wardrobe.forceWear("sword");
+    this.looseKnife.visible = false;
+    return "Knife in hand — drag the right arm through the watermelons";
   }
 
-  private chop(): string {
+  bladeHits(points: Vector3[]): boolean {
+    if (this.chopped) return false;
+    for (const [x, z] of SPOTS) {
+      _melon.set(x, TOP_Y + 0.2, z);
+      this.root.localToWorld(_melon);
+      for (const point of points) {
+        if (point.distanceTo(_melon) < HIT) return true;
+      }
+    }
+    return false;
+  }
+
+  chop(): string {
+    if (this.chopped) return "Watermelons chopped — nice and ready";
     this.chopped = true;
     this.wholes.visible = false;
     this.looseKnife.visible = false;
@@ -200,7 +228,7 @@ function wedge(): Group {
   return group;
 }
 
-function boardKnife(): Group {
+function tableKnife(): Group {
   const group = new Group();
   const handle = new Mesh(new BoxGeometry(0.03, 0.11, 0.022), GRIP);
   handle.position.y = 0.04;

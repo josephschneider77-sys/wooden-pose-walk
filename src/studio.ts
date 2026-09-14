@@ -271,9 +271,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       } else if (onMelons && rooms.melons.chopped) {
         hint.textContent = "Watermelons chopped — nice and ready";
       } else if (onMelons && wardrobe.isWorn("sword")) {
-        hint.textContent = "Tap to chop the watermelons";
+        hint.textContent = "Drag the right arm — the knife — through the fruit";
       } else if (onMelons) {
-        hint.textContent = "Pick up the knife on the board, then chop";
+        hint.textContent = "Pick up the knife on the table, then swing the right arm";
       } else if (onWindow && (wardrobe.isWorn("jetpack") || world === "roof")) {
         hint.textContent = wardrobe.allWorn()
           ? "Tap the light to fly through"
@@ -336,7 +336,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       return;
     }
     if (world === "roof" && rooms.melons.hit(raycaster)) {
-      hint.textContent = rooms.melons.use(wardrobe);
+      hint.textContent =
+        rooms.melons.takeKnife(wardrobe) ??
+        (rooms.melons.chopped
+          ? "Watermelons chopped — nice and ready"
+          : "Drag the right arm — the knife — through the fruit");
       return;
     }
     if (pickWindow(raycaster, activeWindow())) {
@@ -394,6 +398,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const leftToe = new Vector3();
   const rightToe = new Vector3();
   const holdWorld = new Vector3();
+  const knifeHand = new Vector3();
+  const knifeMid = new Vector3();
+  const knifeTip = new Vector3();
   let last = performance.now();
 
   const applyHolds = (walkWeight: number): void => {
@@ -506,8 +513,30 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         : found;
     }
     rooms.melons.showLooseKnife(world === "roof" && !wardrobe.isWorn("sword"));
-    if (world === "roof" && !rooms.melons.chopped && rooms.melons.inRange(figure.root.position.x, figure.root.position.z)) {
-      hint.textContent = rooms.melons.use(wardrobe);
+    if (
+      world === "roof" &&
+      !wardrobe.isWorn("sword") &&
+      rooms.melons.inRange(figure.root.position.x, figure.root.position.z)
+    ) {
+      const took = rooms.melons.takeKnife(wardrobe);
+      if (took) hint.textContent = took;
+    }
+    if (
+      world === "roof" &&
+      !rooms.melons.chopped &&
+      wardrobe.isWorn("sword") &&
+      (holds.has("rightArm") || grab?.id === "rightArm")
+    ) {
+      figure.refreshWorld();
+      const hand = figure.bone("rightHand");
+      hand.getWorldPosition(knifeHand);
+      knifeMid.set(0, -0.16, 0.01);
+      hand.localToWorld(knifeMid);
+      knifeTip.set(0, -0.3, 0.01);
+      hand.localToWorld(knifeTip);
+      if (rooms.melons.bladeHits([knifeHand, knifeMid, knifeTip])) {
+        hint.textContent = rooms.melons.chop();
+      }
     }
 
     figure.worldPos("chest", follow);
@@ -545,7 +574,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
     hint.textContent =
       world === "roof"
-        ? "Night terrace — pick up the knife on the board and chop the watermelons"
+        ? "Night terrace — pick up the knife, then drag the right arm through the fruit"
         : restHint;
   }
 }
