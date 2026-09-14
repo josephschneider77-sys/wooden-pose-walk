@@ -252,6 +252,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       rooms.sky.intensity = 0.62;
       rooms.key.color.set("#fff4d8");
       rooms.key.intensity = 1.48;
+      renderer.toneMappingExposure = 1.05;
+      scene.environmentIntensity = 0.32;
     } else if (world === "roof") {
       scene.background = new Color("#0b1220");
       scene.fog = new Fog("#0b1220", 16, 36);
@@ -260,22 +262,28 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       rooms.sky.intensity = 0.38;
       rooms.key.color.set("#c8d4f0");
       rooms.key.intensity = 0.7;
+      renderer.toneMappingExposure = 1.05;
+      scene.environmentIntensity = 0.32;
     } else if (world === "bazaar") {
-      scene.background = new Color("#140c0a");
-      scene.fog = new Fog("#140c0a", 10, 22);
-      rooms.sky.color.set("#4a2a18");
-      rooms.sky.groundColor.set("#1a0c08");
-      rooms.sky.intensity = 0.42;
-      rooms.key.color.set("#ffb070");
-      rooms.key.intensity = 0.55;
+      scene.background = new Color("#2a1c16");
+      scene.fog = new Fog("#2a1c16", 16, 32);
+      rooms.sky.color.set("#ffd8a8");
+      rooms.sky.groundColor.set("#3a2418");
+      rooms.sky.intensity = 0.85;
+      rooms.key.color.set("#ffc898");
+      rooms.key.intensity = 1.35;
+      renderer.toneMappingExposure = 1.2;
+      scene.environmentIntensity = 0.5;
     } else {
-      scene.background = new Color("#0c0a10");
-      scene.fog = new Fog("#0c0a10", 8, 18);
-      rooms.sky.color.set("#2a2438");
-      rooms.sky.groundColor.set("#08060a");
-      rooms.sky.intensity = 0.34;
-      rooms.key.color.set("#d8c898");
-      rooms.key.intensity = 0.4;
+      scene.background = new Color("#1a1620");
+      scene.fog = new Fog("#1a1620", 12, 26);
+      rooms.sky.color.set("#d8c8a0");
+      rooms.sky.groundColor.set("#1a1410");
+      rooms.sky.intensity = 0.7;
+      rooms.key.color.set("#e8d4a0");
+      rooms.key.intensity = 1.05;
+      renderer.toneMappingExposure = 1.15;
+      scene.environmentIntensity = 0.45;
     }
   };
 
@@ -286,15 +294,20 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     disposeTree(rooms.roof);
   };
 
-  const placeFigure = (x: number, y: number, z: number): void => {
-    const offset = camera.position.clone().sub(controls.target);
+  const placeFigure = (x: number, y: number, z: number, view?: { cam: Vector3; look: Vector3 }): void => {
     figure.root.position.set(x, y, z);
     figure.refreshWorld();
     cape.snap();
     figure.worldPos("chest", follow);
     follow.y += 0.08;
-    controls.target.copy(follow);
-    camera.position.copy(follow).add(offset);
+    if (view) {
+      controls.target.copy(view.look);
+      camera.position.copy(view.cam);
+    } else {
+      const offset = camera.position.clone().sub(controls.target);
+      controls.target.copy(follow);
+      camera.position.copy(follow).add(offset);
+    }
   };
 
   const enterBazaar = (): void => {
@@ -311,7 +324,10 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     hall.vault.visible = false;
     wardrobe.setGround(hall.root);
     paintLook();
-    placeFigure(0, 0, 4.6);
+    placeFigure(0, 0, 2.6, {
+      cam: new Vector3(3.4, 1.95, 5.5),
+      look: new Vector3(0.7, 0.95, 0.15),
+    });
     walker.yaw = Math.PI;
     releasePose();
     controls.maxPolarAngle = Math.PI * 0.86;
@@ -333,7 +349,10 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     hall.root.visible = false;
     hall.vault.visible = true;
     paintLook();
-    placeFigure(0, 0, 2.4);
+    placeFigure(0, 0, 2.2, {
+      cam: new Vector3(3.1, 1.85, 4.6),
+      look: new Vector3(0, 0.9, 0.2),
+    });
     walker.yaw = Math.PI;
     releasePose();
     syncPurse();

@@ -1,4 +1,5 @@
 import {
+  AmbientLight,
   BoxGeometry,
   Color,
   CylinderGeometry,
@@ -18,9 +19,9 @@ import { WoodenMannequin } from "./mannequin";
 export const STALL_FRONT = new Vector3(1.15, 0, -1.15);
 export const GATE_POS = new Vector3(0, 0, -7.15);
 
-const STONE = new MeshPhysicalMaterial({ color: "#2a2420", roughness: 0.92 });
-const SLAB = new MeshPhysicalMaterial({ color: "#3a322c", roughness: 0.88 });
-const WOOD = new MeshPhysicalMaterial({ color: "#6b4228", roughness: 0.7 });
+const STONE = new MeshPhysicalMaterial({ color: "#5a4c42", roughness: 0.88 });
+const SLAB = new MeshPhysicalMaterial({ color: "#6a5a4c", roughness: 0.84 });
+const WOOD = new MeshPhysicalMaterial({ color: "#8a5a32", roughness: 0.62 });
 const CLOTH = new MeshPhysicalMaterial({
   color: "#6a1c22",
   roughness: 0.86,
@@ -51,6 +52,13 @@ export class Bazaar {
     floor.position.y = -0.09;
     floor.receiveShadow = true;
     this.root.add(floor);
+    this.root.add(new AmbientLight("#ffd2a8", 0.62));
+    const hallLamp = new PointLight("#ffc080", 2.6, 16, 1.15);
+    hallLamp.position.set(0, 2.7, 1.2);
+    this.root.add(hallLamp);
+    const stallLamp = new PointLight("#ffb060", 2.1, 8, 1.3);
+    stallLamp.position.set(2.4, 2.3, -0.8);
+    this.root.add(stallLamp);
 
     const wall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
       const mesh = new Mesh(new BoxGeometry(w, h, d), STONE);
@@ -111,7 +119,7 @@ export class Bazaar {
       );
       bulb.position.set(x, y, z);
       this.root.add(bulb);
-      const light = new PointLight("#ffb070", 1.05, 7, 1.6);
+      const light = new PointLight("#ffb070", 1.8, 9, 1.4);
       light.position.set(x, y, z);
       this.root.add(light);
     }
@@ -267,6 +275,7 @@ export class Bazaar {
     floor.position.y = -0.09;
     floor.receiveShadow = true;
     this.vault.add(floor);
+    this.vault.add(new AmbientLight("#e8d4a8", 0.5));
     const ring = new Mesh(new CylinderGeometry(6.5, 6.5, 3.2, 28, 1, true), STONE);
     ring.position.y = 1.5;
     this.vault.add(ring);
