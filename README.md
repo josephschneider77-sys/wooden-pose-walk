@@ -10,6 +10,7 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 - **Tap / click the floor** — walk there
 - **Walk to finds on the lawn** — beret, sunglasses, shoes, shirt, pants, belt, socks, sword, shield, jetpack
 - **Jetpack** — single tap still walks; double-tap the grass to fly there
+- **Knife** — the blade on the lawn. Wear it, fly to the night terrace, and chop the three watermelons on the wooden board
 - **Glowing window** — it keeps a wooden frame until every lawn find is worn, then the frame drops and only the light remains. With the jetpack on, tap it to fly through to a night rooftop. Tap the window there to come home
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom

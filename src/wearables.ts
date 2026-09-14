@@ -163,8 +163,8 @@ const SPECS: WearSpec[] = [
   {
     id: "sword",
     slot: "rightHand",
-    title: "sword",
-    found: "Found a sword",
+    title: "knife",
+    found: "Found a knife — take it to the night terrace to chop the watermelons",
     lawn: new Vector3(2.35, 0.04, 1.85),
     bone: "rightHand",
     wearPos: new Vector3(0, -0.16, 0.01),
@@ -513,10 +513,10 @@ function buildSword(): Group {
   const group = new Group();
   const steel = mat("#c5cdd4", { metalness: 0.72, roughness: 0.22, clearcoat: 0.4 });
   const grip = mat("#4a2c1a", { roughness: 0.7 });
-  add(group, new Mesh(new BoxGeometry(0.018, 0.08, 0.018), grip)).position.y = 0.02;
-  add(group, new Mesh(new BoxGeometry(0.07, 0.012, 0.02), steel)).position.y = 0.06;
-  const blade = add(group, new Mesh(new BoxGeometry(0.022, 0.28, 0.008), steel));
-  blade.position.y = -0.1;
+  add(group, new Mesh(new BoxGeometry(0.022, 0.09, 0.02), grip)).position.y = 0.03;
+  add(group, new Mesh(new BoxGeometry(0.055, 0.014, 0.022), steel)).position.y = 0.078;
+  const blade = add(group, new Mesh(new BoxGeometry(0.038, 0.2, 0.006), steel));
+  blade.position.set(0.006, -0.05, 0);
   return group;
 }
 

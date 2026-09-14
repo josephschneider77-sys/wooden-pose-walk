@@ -80,7 +80,6 @@ export function createRooftop(): Group {
       root.add(bush);
     }
   };
-  planter(-1.8, 4.8);
   planter(2.4, 5.1);
   planter(0.4, -5.4);
 

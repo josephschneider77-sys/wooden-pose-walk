@@ -47,6 +47,7 @@ import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
+import { MelonBoard } from "./melons";
 import { createRooftop, PORTAL } from "./rooftop";
 import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
@@ -253,7 +254,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     raycaster.setFromCamera(pointer, camera);
     const wearHover = wardrobe.hit(raycaster);
     const onWindow = pickWindow(raycaster, activeWindow());
-    canvas.style.cursor = hover ? "grab" : wearHover || onWindow ? "pointer" : "";
+    const onMelons = world === "roof" && rooms.melons.hit(raycaster);
+    canvas.style.cursor = hover ? "grab" : wearHover || onWindow || onMelons ? "pointer" : "";
     if (!grab) {
       if (hover) {
         hint.textContent = `Drag the ${limbLabel(hover)} to pose it`;
@@ -261,6 +263,12 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         hint.textContent = `Tap to take off the ${wearHover.title}`;
       } else if (wearHover) {
         hint.textContent = `Walk over to put on the ${wearHover.title}`;
+      } else if (onMelons && rooms.melons.chopped) {
+        hint.textContent = "Watermelons chopped — nice and ready";
+      } else if (onMelons && wardrobe.isWorn("sword")) {
+        hint.textContent = "Tap to chop the watermelons";
+      } else if (onMelons) {
+        hint.textContent = "You need the knife from the lawn";
       } else if (onWindow && (wardrobe.isWorn("jetpack") || world === "roof")) {
         hint.textContent = wardrobe.allWorn()
           ? "Tap the light to fly through"
@@ -320,6 +328,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       floorPoint.y = 0;
       setDestination(walker, floorPoint);
       hint.textContent = `Walking to the ${wearHit.title}`;
+      return;
+    }
+    if (world === "roof" && rooms.melons.hit(raycaster)) {
+      if (wardrobe.isWorn("sword")) {
+        hint.textContent = rooms.melons.chop();
+      } else {
+        hint.textContent = "You need the knife from the lawn";
+      }
       return;
     }
     if (pickWindow(raycaster, activeWindow())) {
@@ -488,6 +504,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         ? "Every find is on — tap the window when you want to fly through"
         : found;
     }
+    if (
+      world === "roof" &&
+      !rooms.melons.chopped &&
+      wardrobe.isWorn("sword") &&
+      rooms.melons.inRange(figure.root.position.x, figure.root.position.z)
+    ) {
+      hint.textContent = rooms.melons.chop();
+    }
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;
@@ -523,7 +547,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       walker.speed = 0;
     }
     hint.textContent =
-      world === "roof" ? "Night terrace — tap the glowing window to fly home" : restHint;
+      world === "roof"
+        ? wardrobe.isWorn("sword")
+          ? "Night terrace — walk to the watermelons and chop them"
+          : "Night terrace — you need the knife to chop the watermelons"
+        : restHint;
   }
 }
 
@@ -593,6 +621,7 @@ function buildRooms(scene: Scene): {
   windowFrame: Group;
   returnWindow: Mesh;
   portalApproach: Vector3;
+  melons: MelonBoard;
 } {
   const lawn = new Group();
   lawn.name = "lawn";
@@ -674,6 +703,8 @@ function buildRooms(scene: Scene): {
   scene.add(lawn);
 
   const roof = createRooftop();
+  const melons = new MelonBoard();
+  roof.add(melons.root);
   scene.add(roof);
   const returnWindow = roof.getObjectByName("returnWindow") as Mesh;
 
@@ -713,6 +744,7 @@ function buildRooms(scene: Scene): {
     windowFrame,
     returnWindow,
     portalApproach: new Vector3(-10.5, 0, PORTAL.z),
+    melons,
   };
 }
 
