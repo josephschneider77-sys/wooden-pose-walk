@@ -6,16 +6,17 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 
 ## Controls
 
-- **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
-- **Tap / click the floor** — walk there
+- **Grab an arm or a leg** — drag it to pose while you hold it
+- **Tap / click the floor** — walk there. Walking **resets** posed arms and feet; he swings his arms as he walks, and they stay at rest when he stops
 - **Walk to finds on the lawn** — beret, sunglasses, shoes, shirt, pants, belt, socks, sword, shield, jetpack
 - **Jetpack** — single tap still walks; double-tap the grass to fly there
 - **Knife** — wear it (or pick it up off the terrace table), then **drag the right arm** so the blade cuts the three watermelons. Walking up or tapping the table will not chop them
-- **Glowing window** — it keeps a wooden frame until every lawn find is worn, then the frame drops and only the light remains. With the jetpack on, tap it to fly through to a night rooftop. Tap the window there to come home
+- **After the fruit is chopped** — the window vanishes and a stairwell opens in the terrace. Walk into the hole to descend to a cellar
+- **Glowing window** — it keeps a wooden frame until every lawn find is worn, then the frame drops and only the light remains. With the jetpack on, tap it to fly through to a night rooftop. Tap the window there to come home — until the watermelons are chopped
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
-Posed arms stay while walking. Posed legs return when the figure is idle. Refresh the page to reset the pose.
+Posed limbs clear when he starts walking. Refresh the page to reset the scene.
 
 This branch is a **find-and-wear** experiment kept off `main`. One item per slot. With the jetpack on, double-tap to fly; a single tap still walks. Fly through the studio window to a night terrace, then back the same way.
 

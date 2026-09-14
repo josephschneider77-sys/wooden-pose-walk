@@ -43,20 +43,21 @@ export function steerWalker(
   rootPosition: Vector3,
   dt: number,
   canFly = false,
+  groundY = 0,
 ): { walkWeight: number; arrived: boolean; flying: boolean } {
-  const fly = canFly && (walker.fly || rootPosition.y > 0.08);
-  const airborne = fly && (walker.destination !== null || rootPosition.y > 0.08);
-  const targetY = canFly && walker.fly && walker.destination ? walker.climb : 0;
+  const fly = canFly && (walker.fly || rootPosition.y > groundY + 0.08);
+  const airborne = fly && (walker.destination !== null || rootPosition.y > groundY + 0.08);
+  const targetY = canFly && walker.fly && walker.destination ? walker.climb : groundY;
   rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
-  if (!fly) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
-  if (rootPosition.y < 0.08 && !walker.destination) walker.fly = false;
+  if (!fly) rootPosition.y = Math.max(groundY, rootPosition.y - 4.2 * dt);
+  if (rootPosition.y < groundY + 0.08 && !walker.destination) walker.fly = false;
 
   if (!walker.destination) {
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
     return {
       walkWeight: airborne ? 0 : saturate(walker.speed / 0.35),
       arrived: true,
-      flying: rootPosition.y > 0.28,
+      flying: rootPosition.y > groundY + 0.28,
     };
   }
 
@@ -69,7 +70,7 @@ export function steerWalker(
     return {
       walkWeight: airborne ? 0 : saturate(walker.speed / 0.35),
       arrived: true,
-      flying: rootPosition.y > 0.28,
+      flying: rootPosition.y > groundY + 0.28,
     };
   }
 
@@ -96,7 +97,7 @@ export function steerWalker(
   return {
     walkWeight: airborne ? 0 : saturate(walker.speed / 0.42),
     arrived: false,
-    flying: rootPosition.y > 0.28,
+    flying: rootPosition.y > groundY + 0.28,
   };
 }
 
@@ -181,7 +182,7 @@ export function poseMannequin(
   spine.quaternion.copy(figure.restLocal.get("spine")!);
   spine.rotateX(0.04 * walkWeight);
   chest.quaternion.copy(figure.restLocal.get("chest")!);
-  chest.rotateY(-Math.sin(walker.phase * Math.PI * 2) * 0.12 * walkWeight);
+  chest.rotateY(-Math.sin(walker.phase * Math.PI * 2) * 0.16 * walkWeight);
   chest.rotateX(Math.sin(time * 1.5) * 0.02 * (1 - walkWeight));
 
   const leftPhase = walker.phase;
@@ -213,9 +214,10 @@ function poseArm(
   const elbow = figure.bone(elbowName);
   shoulder.quaternion.copy(figure.restLocal.get(shoulderName)!);
   elbow.quaternion.copy(figure.restLocal.get(elbowName)!);
-  shoulder.rotateX(swing * lerp(0.04, 0.42, walkWeight));
-  shoulder.rotateZ((side === "left" ? 1 : -1) * 0.08);
-  elbow.rotateX(0.18 + Math.max(0, -swing) * 0.35 * walkWeight);
+  shoulder.rotateX(swing * lerp(0.1, 0.74, walkWeight));
+  shoulder.rotateZ((side === "left" ? 1 : -1) * lerp(0.08, 0.2, walkWeight));
+  shoulder.rotateY((side === "left" ? 1 : -1) * swing * 0.14 * walkWeight);
+  elbow.rotateX(0.16 + Math.max(0, -swing) * 0.82 * walkWeight);
 }
 
 export function describeGait(

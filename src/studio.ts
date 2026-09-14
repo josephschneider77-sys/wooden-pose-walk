@@ -49,6 +49,7 @@ import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
 import { MelonBoard } from "./melons";
 import { createRooftop, PORTAL } from "./rooftop";
+import { CELLAR_Y, Stairwell } from "./stairwell";
 import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
@@ -86,15 +87,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   scene.environmentIntensity = 0.32;
   pmrem.dispose();
 
-  const camera = new PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 60);
+  const camera = new PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 80);
   camera.position.set(3.4, 2.15, 4.6);
 
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.maxPolarAngle = Math.PI * 0.48;
+  controls.maxPolarAngle = Math.PI * 0.86;
   controls.minDistance = 1.6;
-  controls.maxDistance = 9;
+  controls.maxDistance = 12;
   controls.target.set(0, 0.95, 0);
 
   const rooms = buildRooms(scene);
@@ -118,21 +119,39 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   }
   const pickList = figure.pickables();
   const restHint =
-    "Collect every find on the lawn · the window keeps its frame until then";
+    "Collect every find on the lawn · tap the grass to walk · posed limbs reset when he steps off";
 
   const walker = createWalker();
   let lastPortal = -10;
+  let windowsGone = false;
   const DOUBLE_MS = 320;
   let pendingGo: { at: number; point: Vector3 } | null = null;
-
-  const goTo = (point: Vector3, fly: boolean): void => {
-    setDestination(walker, point, fly);
-    hint.textContent = fly ? "Flying there" : "Walking there";
-  };
+  const leftToe = new Vector3();
+  const rightToe = new Vector3();
 
   const activeWindow = (): Mesh => (world === "lawn" ? rooms.window : rooms.returnWindow);
 
+  const vanishWindow = (): void => {
+    windowsGone = true;
+    rooms.window.visible = false;
+    rooms.windowGlow.visible = false;
+    rooms.windowFrame.visible = false;
+    rooms.nightView.visible = false;
+    rooms.roofWindow.visible = false;
+    rooms.returnWindow.visible = false;
+  };
+
+  const openStairwell = (): void => {
+    vanishWindow();
+    rooms.stairs.reveal();
+    rooms.floorPlug.visible = false;
+    controls.maxPolarAngle = Math.PI * 0.94;
+    controls.maxDistance = 18;
+    hint.textContent = "The window is gone. A stairwell tore open in the slate — walk down.";
+  };
+
   const syncWindowLook = (): void => {
+    if (windowsGone) return;
     const open = wardrobe.allWorn();
     rooms.windowFrame.visible = !open;
     const glow = rooms.windowGlow.material as MeshBasicMaterial;
@@ -151,6 +170,42 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const leftLock = createFootLock(figure.worldPos("leftToe"));
   const rightLock = createFootLock(figure.worldPos("rightToe"));
   const holds = new Map<LimbId, Vector3>();
+  let grab: Grab | null = null;
+
+  const snapFeet = (): void => {
+    figure.resetPose();
+    figure.bone("root").rotation.set(0, walker.yaw, 0);
+    figure.refreshWorld();
+    figure.worldPos("leftToe", leftToe);
+    figure.worldPos("rightToe", rightToe);
+    for (const lock of [leftLock, rightLock]) {
+      const toe = lock === leftLock ? leftToe : rightToe;
+      lock.position.copy(toe);
+      lock.velocity.set(0, 0, 0);
+      lock.inputPosition.copy(toe);
+      lock.inputVelocity.set(0, 0, 0);
+      lock.offsetPosition.set(0, 0, 0);
+      lock.offsetVelocity.set(0, 0, 0);
+      lock.time = 10;
+      lock.contact.copy(toe);
+      lock.locked = false;
+    }
+  };
+
+  const releasePose = (): void => {
+    holds.clear();
+    snapFeet();
+  };
+
+  const goTo = (point: Vector3, fly: boolean): void => {
+    if (!grab) releasePose();
+    setDestination(walker, point, fly);
+    const down =
+      world === "roof" &&
+      rooms.stairs.open &&
+      point.distanceTo(rooms.stairs.walkIn) < 0.35;
+    hint.textContent = fly ? "Flying there" : down ? "Walking down the stairwell" : "Walking there";
+  };
 
   const highlight = new Mesh(
     new SphereGeometry(0.034, 16, 12),
@@ -175,8 +230,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const worldTarget = new Vector3();
   const cameraDir = new Vector3();
   const pointerState = { x: 0, y: 0, moved: false };
-  let grab: Grab | null = null;
   let hover: LimbId | null = null;
+
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("cellar")) {
+    wardrobe.forceWear("jetpack");
+    wardrobe.forceWear("sword");
+    rooms.melons.chop();
+    world = "roof";
+    applyWorld(scene, rooms, world, hint);
+    openStairwell();
+    figure.root.position.set(-2.4, 0, 1.15);
+    figure.refreshWorld();
+    cape.snap();
+  }
 
   const setPointer = (event: PointerEvent): void => {
     pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -258,7 +324,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
     const wearHover = wardrobe.hit(raycaster);
-    const onWindow = pickWindow(raycaster, activeWindow());
+    const onWindow = !windowsGone && pickWindow(raycaster, activeWindow());
     const onMelons = world === "roof" && rooms.melons.hit(raycaster);
     canvas.style.cursor = hover ? "grab" : wearHover || onWindow || onMelons ? "pointer" : "";
     if (!grab) {
@@ -280,6 +346,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
           : "Tap to fly through the window";
       } else if (onWindow) {
         hint.textContent = "The jetpack is by the window — walk to it first";
+      } else if (windowsGone && world === "roof") {
+        hint.textContent = rooms.stairs.open
+          ? "Walk into the stairwell — it drops to a lower level"
+          : restHint;
       } else {
         hint.textContent = wardrobe.allWorn()
           ? "The frame is gone — fly through the light"
@@ -331,7 +401,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (wearHit) {
       wardrobe.walkTarget(wearHit.id, floorPoint);
       floorPoint.y = 0;
-      setDestination(walker, floorPoint);
+      goTo(floorPoint, false);
       hint.textContent = `Walking to the ${wearHit.title}`;
       return;
     }
@@ -343,8 +413,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
           : "Drag the right arm — the knife — through the fruit");
       return;
     }
-    if (pickWindow(raycaster, activeWindow())) {
+    if (!windowsGone && pickWindow(raycaster, activeWindow())) {
       if (wardrobe.isWorn("jetpack")) {
+        if (!grab) releasePose();
         setDestination(walker, rooms.portalApproach, true, 2.55);
         hint.textContent = "Flying through the window";
       } else if (world === "roof") {
@@ -352,16 +423,29 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       } else {
         wardrobe.walkTarget("jetpack", floorPoint);
         floorPoint.y = 0;
-        setDestination(walker, floorPoint);
+        goTo(floorPoint, false);
         hint.textContent = "Walking to the jetpack — then tap the window";
       }
       return;
     }
     const reach = world === "roof" ? 10.2 : ROOM + 0.4;
-    if (pickFloor(event, camera, raycaster, pointer, floorPoint, reach)) {
+    if (
+      pickGround(
+        event,
+        camera,
+        raycaster,
+        pointer,
+        floorPoint,
+        reach,
+        world === "roof" && rooms.stairs.open ? rooms.stairs : null,
+      )
+    ) {
       const pad = world === "roof" ? 10 : ROOM;
       floorPoint.x = clamp(floorPoint.x, -pad, pad);
       floorPoint.z = clamp(floorPoint.z, -pad, pad);
+      if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
+        floorPoint.copy(rooms.stairs.walkIn);
+      }
       floorPoint.y = 0;
       const now = performance.now();
       if (wardrobe.isWorn("jetpack") && pendingGo && now - pendingGo.at < DOUBLE_MS) {
@@ -395,30 +479,30 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   });
 
   const follow = new Vector3();
-  const leftToe = new Vector3();
-  const rightToe = new Vector3();
   const holdWorld = new Vector3();
   const knifeHand = new Vector3();
   const knifeMid = new Vector3();
   const knifeTip = new Vector3();
   let last = performance.now();
 
-  const applyHolds = (walkWeight: number): void => {
-    for (const [id, local] of holds) {
-      if (!isArm(id) && walkWeight > 0.22 && grab?.id !== id) continue;
-      holdWorld.copy(local);
-      figure.bone(limbAnchor(id)).localToWorld(holdWorld);
-      if (isArm(id)) {
-        figure.solveArm(limbSide(id), holdWorld, SOFTENING);
-      } else {
-        figure.solveLeg(limbSide(id), holdWorld, {
-          enableHeightClamp: true,
-          enableHeelLookAt: true,
-          enableToeLookAt: true,
-          softening: SOFTENING,
-          maxReach: LEG_REACH,
-        });
-      }
+  const applyHolds = (): void => {
+    if (!grab) return;
+    const local = holds.get(grab.id);
+    if (!local) return;
+    holdWorld.copy(local);
+    figure.bone(limbAnchor(grab.id)).localToWorld(holdWorld);
+    if (isArm(grab.id)) {
+      figure.solveArm(limbSide(grab.id), holdWorld, SOFTENING);
+    } else {
+      figure.solveLeg(limbSide(grab.id), holdWorld, {
+        enableHeightClamp: true,
+        enableHeelLookAt: true,
+        enableToeLookAt: true,
+        softening: SOFTENING,
+        maxReach: LEG_REACH,
+        groundY:
+          world === "roof" ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z) : 0,
+      });
     }
   };
 
@@ -433,29 +517,39 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     const jet = wardrobe.isWorn("jetpack");
-    const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet);
-    if (flying && time - lastPortal > 1.3 && throughPortal(figure.root.position)) {
+    const groundY =
+      world === "roof" ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z) : 0;
+    const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet, groundY);
+    if (
+      !windowsGone &&
+      flying &&
+      time - lastPortal > 1.3 &&
+      throughPortal(figure.root.position)
+    ) {
       enterWorld(world === "lawn" ? "roof" : "lawn");
     }
     if (flying) {
       poseHover(figure, walker, time);
-      applyHolds(0);
+      applyHolds();
     } else {
       const contacts = poseMannequin(figure, walker, walkWeight, time, {
-        leftArm: holds.has("leftArm"),
-        rightArm: holds.has("rightArm"),
+        leftArm: grab?.id === "leftArm",
+        rightArm: grab?.id === "rightArm",
       });
       figure.worldPos("leftToe", leftToe);
       figure.worldPos("rightToe", rightToe);
 
       const leftTarget = leftToe.clone();
       const rightTarget = rightToe.clone();
+      const toeFloor = figure.toeMinHeight + groundY;
+      const leftHeld = grab?.id === "leftLeg";
+      const rightHeld = grab?.id === "rightLeg";
 
       updateFootLockingState(
         leftLock,
         leftToe,
-        contacts.leftContact && !holds.has("leftLeg"),
-        figure.toeMinHeight,
+        contacts.leftContact && !leftHeld,
+        toeFloor,
         dt,
         UNLOCK_DISTANCE,
         LOCK_DISTANCE,
@@ -464,34 +558,36 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       updateFootLockingState(
         rightLock,
         rightToe,
-        contacts.rightContact && !holds.has("rightLeg"),
-        figure.toeMinHeight,
+        contacts.rightContact && !rightHeld,
+        toeFloor,
         dt,
         UNLOCK_DISTANCE,
         LOCK_DISTANCE,
         BLEND_TIME,
       );
-      if (!holds.has("leftLeg")) leftTarget.copy(leftLock.position);
-      if (!holds.has("rightLeg")) rightTarget.copy(rightLock.position);
+      if (!leftHeld) leftTarget.copy(leftLock.position);
+      if (!rightHeld) rightTarget.copy(rightLock.position);
 
-      if (!holds.has("leftLeg")) {
+      if (!leftHeld) {
         figure.solveLeg("left", leftTarget, {
           enableHeightClamp: true,
           enableHeelLookAt: true,
           enableToeLookAt: true,
           softening: SOFTENING,
+          groundY,
         });
       }
-      if (!holds.has("rightLeg")) {
+      if (!rightHeld) {
         figure.solveLeg("right", rightTarget, {
           enableHeightClamp: true,
           enableHeelLookAt: true,
           enableToeLookAt: true,
           softening: SOFTENING,
+          groundY,
         });
       }
 
-      applyHolds(walkWeight);
+      applyHolds();
     }
     wardrobe.setThrust(flying, time);
     cape.setPack(jet);
@@ -525,7 +621,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       world === "roof" &&
       !rooms.melons.chopped &&
       wardrobe.isWorn("sword") &&
-      (holds.has("rightArm") || grab?.id === "rightArm")
+      grab?.id === "rightArm"
     ) {
       figure.refreshWorld();
       const hand = figure.bone("rightHand");
@@ -535,7 +631,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       knifeTip.set(0, -0.3, 0.01);
       hand.localToWorld(knifeTip);
       if (rooms.melons.bladeHits([knifeHand, knifeMid, knifeTip])) {
-        hint.textContent = rooms.melons.chop();
+        rooms.melons.chop();
+        openStairwell();
       }
     }
 
@@ -586,19 +683,40 @@ function pickFloor(
   pointer: Vector2,
   out: Vector3,
   limit = ROOM + 0.4,
+  planeY = 0,
 ): boolean {
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
   const denom = raycaster.ray.direction.y;
   if (Math.abs(denom) < 1e-5) return false;
-  const t = -raycaster.ray.origin.y / denom;
+  const t = (planeY - raycaster.ray.origin.y) / denom;
   if (t < 0.05) return false;
   out.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, t);
   return Math.abs(out.x) <= limit && Math.abs(out.z) <= limit;
 }
 
+function pickGround(
+  event: PointerEvent,
+  camera: PerspectiveCamera,
+  raycaster: Raycaster,
+  pointer: Vector2,
+  out: Vector3,
+  limit: number,
+  stairs: Stairwell | null,
+): boolean {
+  if (pickFloor(event, camera, raycaster, pointer, out, limit, 0)) return true;
+  if (!stairs?.open) return false;
+  return pickFloor(event, camera, raycaster, pointer, out, limit, CELLAR_Y);
+}
+
 function pickWindow(raycaster: Raycaster, pane: Mesh): boolean {
+  if (!pane.visible) return false;
+  let parent = pane.parent;
+  while (parent) {
+    if (!parent.visible) return false;
+    parent = parent.parent;
+  }
   return raycaster.intersectObject(pane, false).length > 0;
 }
 
@@ -643,9 +761,13 @@ function buildRooms(scene: Scene): {
   window: Mesh;
   windowGlow: Mesh;
   windowFrame: Group;
+  nightView: Mesh;
   returnWindow: Mesh;
+  roofWindow: Group;
   portalApproach: Vector3;
   melons: MelonBoard;
+  stairs: Stairwell;
+  floorPlug: Mesh;
 } {
   const lawn = new Group();
   lawn.name = "lawn";
@@ -673,6 +795,7 @@ function buildRooms(scene: Scene): {
     new PlaneGeometry(2.4, 3.5),
     new MeshBasicMaterial({ color: "#0b1220" }),
   );
+  nightView.name = "nightView";
   nightView.position.set(PORTAL.x - 0.08, PORTAL.y, PORTAL.z);
   nightView.rotation.y = Math.PI / 2;
   lawn.add(nightView);
@@ -727,10 +850,14 @@ function buildRooms(scene: Scene): {
   scene.add(lawn);
 
   const roof = createRooftop();
+  const stairs = new Stairwell();
+  roof.add(stairs.root);
   const melons = new MelonBoard();
   roof.add(melons.root);
   scene.add(roof);
   const returnWindow = roof.getObjectByName("returnWindow") as Mesh;
+  const roofWindow = roof.getObjectByName("roofWindow") as Group;
+  const floorPlug = roof.getObjectByName("floorPlug") as Mesh;
 
   const sky = new HemisphereLight("#eef6ff", "#4a6b32", 0.62);
   scene.add(sky);
@@ -766,9 +893,13 @@ function buildRooms(scene: Scene): {
     window: windowPick,
     windowGlow,
     windowFrame,
+    nightView,
     returnWindow,
+    roofWindow,
     portalApproach: new Vector3(-10.5, 0, PORTAL.z),
     melons,
+    stairs,
+    floorPlug,
   };
 }
 

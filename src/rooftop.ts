@@ -13,6 +13,7 @@ import {
   PointsMaterial,
   SphereGeometry,
 } from "three";
+import { buildTerraceFloor } from "./stairwell";
 
 const WINDOW_Z = 1.15;
 const WINDOW_X = -9.94;
@@ -28,10 +29,7 @@ export function createRooftop(): Group {
     roughness: 0.88,
     metalness: 0.08,
   });
-  const floor = new Mesh(new BoxGeometry(22, 0.16, 22), slate);
-  floor.position.y = -0.08;
-  floor.receiveShadow = true;
-  root.add(floor);
+  buildTerraceFloor(root, slate);
 
   const brick = new MeshPhysicalMaterial({
     color: "#3a2a28",
@@ -87,7 +85,7 @@ export function createRooftop(): Group {
     new CylinderGeometry(0.22, 0.26, 0.45, 12),
     new MeshPhysicalMaterial({ color: "#4a5058", roughness: 0.45, metalness: 0.35 }),
   );
-  vent.position.set(-3.4, 0.22, -3.2);
+  vent.position.set(2.2, 0.22, -3.2);
   vent.castShadow = true;
   root.add(vent);
 
@@ -136,6 +134,8 @@ export function createRooftop(): Group {
     ),
   );
 
+  const roofWindow = new Group();
+  roofWindow.name = "roofWindow";
   const returnGlow = new Mesh(
     new PlaneGeometry(2.4, 3.5),
     new MeshBasicMaterial({
@@ -146,7 +146,7 @@ export function createRooftop(): Group {
   );
   returnGlow.position.set(WINDOW_X, 3.15, WINDOW_Z);
   returnGlow.rotation.y = Math.PI / 2;
-  root.add(returnGlow);
+  roofWindow.add(returnGlow);
 
   const returnPick = new Mesh(
     new PlaneGeometry(3.2, 4.2),
@@ -155,7 +155,8 @@ export function createRooftop(): Group {
   returnPick.position.set(WINDOW_X + 0.04, 3.15, WINDOW_Z);
   returnPick.rotation.y = Math.PI / 2;
   returnPick.name = "returnWindow";
-  root.add(returnPick);
+  roofWindow.add(returnPick);
+  root.add(roofWindow);
 
   return root;
 }
