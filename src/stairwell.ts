@@ -26,15 +26,25 @@ export const CELLAR_Y = -(STEPS * RISE);
 const WIDTH = 1.85;
 const Z0 = WELL.cz + WELL.hz;
 
-const STONE = new MeshPhysicalMaterial({ color: "#14110f", roughness: 0.94 });
-const STEP = new MeshPhysicalMaterial({ color: "#2c221c", roughness: 0.9 });
-const RUST = new MeshPhysicalMaterial({
-  color: "#3a2018",
-  roughness: 0.68,
-  metalness: 0.28,
+const STONE = new MeshPhysicalMaterial({ color: "#1c1816", roughness: 0.94 });
+const STEP = new MeshPhysicalMaterial({
+  color: "#5a4636",
+  roughness: 0.82,
+  emissive: "#2a1810",
+  emissiveIntensity: 0.22,
 });
-const VOID = new MeshBasicMaterial({ color: "#030204" });
-const MOSS = new MeshPhysicalMaterial({ color: "#1a2414", roughness: 0.95 });
+const NOSE = new MeshPhysicalMaterial({
+  color: "#8a6a48",
+  roughness: 0.45,
+  emissive: "#ff7a3a",
+  emissiveIntensity: 0.35,
+});
+const RUST = new MeshPhysicalMaterial({
+  color: "#6a3224",
+  roughness: 0.62,
+  metalness: 0.32,
+});
+const MOSS = new MeshPhysicalMaterial({ color: "#2a3418", roughness: 0.95 });
 
 export class Stairwell {
   readonly root = new Group();
@@ -44,13 +54,6 @@ export class Stairwell {
   constructor() {
     this.root.name = "stairwell";
     this.root.visible = false;
-
-    const pit = new Mesh(
-      new BoxGeometry(WELL.hx * 2 + 0.06, STEPS * RISE + 0.4, WELL.hz * 2 + 0.06),
-      VOID,
-    );
-    pit.position.set(WELL.cx, -STEPS * RISE * 0.5 - 0.15, WELL.cz);
-    this.root.add(pit);
 
     const wall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
       const mesh = new Mesh(new BoxGeometry(w, h, d), STONE);
@@ -91,6 +94,16 @@ export class Stairwell {
       tread.castShadow = true;
       tread.receiveShadow = true;
       this.root.add(tread);
+
+      const nose = new Mesh(new BoxGeometry(WIDTH - chip - 0.08, 0.03, 0.04), NOSE);
+      nose.position.set(WELL.cx + wobble, y + 0.05, z - RUN * 0.42);
+      this.root.add(nose);
+
+      if (i % 3 === 1) {
+        const lamp = new PointLight("#d4622a", 1.15, 3.4, 1.7);
+        lamp.position.set(WELL.cx, y + 0.55, z);
+        this.root.add(lamp);
+      }
 
       const riser = new Mesh(new BoxGeometry(WIDTH - 0.12, RISE + 0.01, 0.04), STONE);
       riser.position.set(WELL.cx + wobble * 0.4, -i * RISE - RISE * 0.5, Z0 - i * RUN);
@@ -174,8 +187,11 @@ export class Stairwell {
     ember.position.copy(drip.position);
     cellar.add(ember);
 
-    const shaftGlow = new PointLight("#4a100c", 0.85, 7, 1.8);
-    shaftGlow.position.set(WELL.cx, -1.6, WELL.cz);
+    const mouth = new PointLight("#ff8a4a", 2.2, 6.5, 1.35);
+    mouth.position.set(WELL.cx, 0.9, WELL.cz + 0.4);
+    this.root.add(mouth);
+    const shaftGlow = new PointLight("#c43a18", 1.6, 8, 1.5);
+    shaftGlow.position.set(WELL.cx, -1.4, WELL.cz);
     this.root.add(shaftGlow);
 
     const pillar = new Mesh(new CylinderGeometry(0.16, 0.2, 2.6, 8), STONE);
