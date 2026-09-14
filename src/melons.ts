@@ -2,10 +2,13 @@ import {
   BoxGeometry,
   CanvasTexture,
   CircleGeometry,
+  Color,
   CylinderGeometry,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
+  PointLight,
   SphereGeometry,
   SRGBColorSpace,
   Vector3,
@@ -61,7 +64,7 @@ export class MelonBoard {
 
   constructor() {
     this.root.name = "melonTable";
-    this.root.position.set(0.7, 0, 2.55);
+    this.root.position.set(-0.2, 0, 1.15);
 
     const top = new Mesh(new BoxGeometry(1.7, 0.07, 1.15), TOP);
     top.position.y = TOP_Y;
@@ -108,6 +111,16 @@ export class MelonBoard {
 
     this.pieces.visible = false;
     this.root.add(this.wholes, this.pieces, this.looseKnife);
+
+    const lamp = new PointLight("#ffd2a8", 2.4, 9, 1.3);
+    lamp.position.set(0, 2.15, 0);
+    this.root.add(lamp);
+    const bulb = new Mesh(
+      new SphereGeometry(0.07, 12, 10),
+      new MeshBasicMaterial({ color: new Color(4.4, 3.2, 1.7) }),
+    );
+    bulb.position.set(0, 2.1, 0);
+    this.root.add(bulb);
   }
 
   hit(raycaster: Raycaster): boolean {
