@@ -44,6 +44,7 @@ export class Bazaar {
   private unlock = 0;
   private readonly lamps: VaultLamp[] = [];
   private vaultAmbient = new AmbientLight("#ffe8c4", 0.78);
+  private hunt: VaultLamp | null = null;
 
   constructor() {
     this.root.name = "bazaar";
@@ -290,12 +291,22 @@ export class Bazaar {
 
   snuffNear(x: number, z: number): boolean {
     let any = false;
+    if (this.hunt?.lit) {
+      const hx = x - this.hunt.x;
+      const hz = z - this.hunt.z;
+      if (hx * hx + hz * hz < 3.6 * 3.6) {
+        this.hunt.snuff();
+        this.hunt = null;
+        any = true;
+      }
+    }
     for (const lamp of this.lamps) {
       if (!lamp.lit) continue;
       const dx = x - lamp.x;
       const dz = z - lamp.z;
       if (dx * dx + dz * dz < 2.45 * 2.45) {
         lamp.snuff();
+        if (this.hunt === lamp) this.hunt = null;
         any = true;
       }
     }
@@ -303,7 +314,7 @@ export class Bazaar {
     return any;
   }
 
-  pullToLamp(point: Vector3, maxDist = 4.2): boolean {
+  pullToLamp(point: Vector3, maxDist = 16): boolean {
     let best: VaultLamp | null = null;
     let bestD = maxDist * maxDist;
     for (const lamp of this.lamps) {
@@ -317,6 +328,7 @@ export class Bazaar {
       }
     }
     if (!best) return false;
+    this.hunt = best;
     point.copy(best.approach);
     return true;
   }
@@ -327,6 +339,7 @@ export class Bazaar {
     if (!hit) return false;
     const lamp = this.lamps.find((entry) => entry.owns(hit.object));
     if (!lamp || !lamp.lit) return false;
+    this.hunt = lamp;
     out.copy(lamp.approach);
     return true;
   }
