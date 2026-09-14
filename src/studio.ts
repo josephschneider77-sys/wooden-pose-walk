@@ -732,6 +732,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
         floorPoint.copy(rooms.stairs.walkIn);
       }
+      if (world === "vault") bazaar?.pullToLamp(floorPoint);
       floorPoint.y = 0;
       const now = performance.now();
       if (

@@ -289,17 +289,36 @@ export class Bazaar {
   }
 
   snuffNear(x: number, z: number): boolean {
+    let any = false;
     for (const lamp of this.lamps) {
       if (!lamp.lit) continue;
       const dx = x - lamp.x;
       const dz = z - lamp.z;
-      if (dx * dx + dz * dz < 2.2 * 2.2) {
+      if (dx * dx + dz * dz < 2.45 * 2.45) {
         lamp.snuff();
-        this.vaultAmbient.intensity = 0.12 + 0.1 * this.remainingLamps();
-        return true;
+        any = true;
       }
     }
-    return false;
+    if (any) this.vaultAmbient.intensity = 0.12 + 0.1 * this.remainingLamps();
+    return any;
+  }
+
+  pullToLamp(point: Vector3, maxDist = 4.2): boolean {
+    let best: VaultLamp | null = null;
+    let bestD = maxDist * maxDist;
+    for (const lamp of this.lamps) {
+      if (!lamp.lit) continue;
+      const dx = point.x - lamp.x;
+      const dz = point.z - lamp.z;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) {
+        bestD = d;
+        best = lamp;
+      }
+    }
+    if (!best) return false;
+    point.copy(best.approach);
+    return true;
   }
 
   lampApproach(raycaster: Raycaster, out: Vector3): boolean {
