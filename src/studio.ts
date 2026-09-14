@@ -49,7 +49,6 @@ import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
 import { Bazaar, disposeTree, STALL_FRONT } from "./bazaar";
 import { BEACH_SPAWN, Beach } from "./beach";
-import { keepOffDiscs } from "./collide";
 import { MelonBoard } from "./melons";
 import { createRooftop, PORTAL } from "./rooftop";
 import { bindShop, type Purse } from "./shop";
@@ -905,7 +904,6 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     cape.setPack(wardrobe.isWorn("jetpack"));
 
     if (world === "bazaar" && bazaar) {
-      keepOffDiscs(figure.root.position, bazaar.hallDiscs);
       bazaar.poseMerchant(time);
       figure.worldPos("chest", holdWorld);
       const wasShut = !bazaar.gateOpen;
@@ -918,7 +916,6 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       }
     }
     if (world === "vault" && bazaar) {
-      keepOffDiscs(figure.root.position, bazaar.vaultDiscs);
       if (bazaar.snuffNear(figure.root.position.x, figure.root.position.z)) {
         const left = bazaar.remainingLamps();
         hint.textContent =
@@ -934,7 +931,6 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       }
     }
     if (world === "beach" && beach) {
-      keepOffDiscs(figure.root.position, beach.discs);
       beach.sway(time);
     }
 

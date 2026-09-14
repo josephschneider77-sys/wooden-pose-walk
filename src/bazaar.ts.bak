@@ -1,5 +1,4 @@
 import {
-  AmbientLight,
   BoxGeometry,
   Color,
   CylinderGeometry,
@@ -19,9 +18,9 @@ import { WoodenMannequin } from "./mannequin";
 export const STALL_FRONT = new Vector3(1.15, 0, -1.15);
 export const GATE_POS = new Vector3(0, 0, -7.15);
 
-const STONE = new MeshPhysicalMaterial({ color: "#5a4c42", roughness: 0.88 });
-const SLAB = new MeshPhysicalMaterial({ color: "#6a5a4c", roughness: 0.84 });
-const WOOD = new MeshPhysicalMaterial({ color: "#8a5a32", roughness: 0.62 });
+const STONE = new MeshPhysicalMaterial({ color: "#2a2420", roughness: 0.92 });
+const SLAB = new MeshPhysicalMaterial({ color: "#3a322c", roughness: 0.88 });
+const WOOD = new MeshPhysicalMaterial({ color: "#6b4228", roughness: 0.7 });
 const CLOTH = new MeshPhysicalMaterial({
   color: "#6a1c22",
   roughness: 0.86,
@@ -41,8 +40,6 @@ export class Bazaar {
   private readonly moths = new Group();
   private readonly lanternGlow: PointLight;
   private unlock = 0;
-  private readonly lamps: VaultLamp[] = [];
-  private vaultAmbient = new AmbientLight("#e8d4a8", 0.52);
 
   constructor() {
     this.root.name = "bazaar";
@@ -54,13 +51,6 @@ export class Bazaar {
     floor.position.y = -0.09;
     floor.receiveShadow = true;
     this.root.add(floor);
-    this.root.add(new AmbientLight("#ffd2a8", 0.62));
-    const hallLamp = new PointLight("#ffc080", 2.6, 16, 1.15);
-    hallLamp.position.set(0, 2.7, 1.2);
-    this.root.add(hallLamp);
-    const stallLamp = new PointLight("#ffb060", 2.1, 8, 1.3);
-    stallLamp.position.set(2.4, 2.3, -0.8);
-    this.root.add(stallLamp);
 
     const wall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
       const mesh = new Mesh(new BoxGeometry(w, h, d), STONE);
@@ -82,19 +72,11 @@ export class Bazaar {
 
     this.buildStall();
     this.merchant = this.buildMerchant();
-    this.poseMerchant(0);
     this.root.add(this.merchant.root);
 
-    const post = (x: number) => {
-      const mesh = new Mesh(new BoxGeometry(0.42, 3.1, 0.36), STONE);
-      mesh.position.set(x, 1.5, -7.15);
-      this.root.add(mesh);
-    };
-    post(-1.55);
-    post(1.55);
-    const lintel = new Mesh(new BoxGeometry(3.6, 0.38, 0.4), STONE);
-    lintel.position.set(0, 2.95, -7.15);
-    this.root.add(lintel);
+    const arch = new Mesh(new BoxGeometry(3.4, 3.1, 0.36), STONE);
+    arch.position.set(0, 1.5, -7.15);
+    this.root.add(arch);
     this.leftDoor = new Mesh(new BoxGeometry(1.15, 2.35, 0.12), STONE);
     this.rightDoor = this.leftDoor.clone();
     this.leftDoor.position.set(-0.58, 1.15, -7.05);
@@ -128,7 +110,7 @@ export class Bazaar {
       );
       bulb.position.set(x, y, z);
       this.root.add(bulb);
-      const light = new PointLight("#ffb070", 1.8, 9, 1.4);
+      const light = new PointLight("#ffb070", 1.05, 7, 1.6);
       light.position.set(x, y, z);
       this.root.add(light);
     }
@@ -216,9 +198,8 @@ export class Bazaar {
     const sash = new Mesh(new TorusGeometry(0.13, 0.018, 8, 20), CLOTH);
     sash.rotation.x = Math.PI / 2;
     figure.bone("pelvis").add(sash);
-    void attachRealisticFace(figure).catch(() => {
-      // Twin can stand without the scan if the face pack fails.
-    });
+    void attachRealisticFace(figure);
+    this.poseMerchant(0);
     return figure;
   }
 
@@ -279,116 +260,35 @@ export class Bazaar {
     this.rightDoor.position.x = 1.55;
   }
 
-  remainingLamps(): number {
-    return this.lamps.filter((lamp) => lamp.lit).length;
-  }
-
-  allDark(): boolean {
-    return this.lamps.length > 0 && this.remainingLamps() === 0;
-  }
-
-  snuffNear(x: number, z: number): boolean {
-    for (const lamp of this.lamps) {
-      if (!lamp.lit) continue;
-      const dx = x - lamp.x;
-      const dz = z - lamp.z;
-      if (dx * dx + dz * dz < 1.05 * 1.05) {
-        lamp.snuff();
-        this.vaultAmbient.intensity = 0.12 + 0.1 * this.remainingLamps();
-        return true;
-      }
-    }
-    return false;
-  }
-
-  lampApproach(raycaster: Raycaster, out: Vector3): boolean {
-    const meshes = this.lamps.flatMap((lamp) => (lamp.lit ? lamp.picks : []));
-    const hit = raycaster.intersectObjects(meshes, false)[0];
-    if (!hit) return false;
-    const lamp = this.lamps.find((entry) => entry.owns(hit.object));
-    if (!lamp || !lamp.lit) return false;
-    out.copy(lamp.approach);
-    return true;
-  }
-
   private buildVault(): void {
     const floor = new Mesh(new CylinderGeometry(6.4, 6.4, 0.18, 28), SLAB);
     floor.position.y = -0.09;
     floor.receiveShadow = true;
     this.vault.add(floor);
-    this.vault.add(this.vaultAmbient);
     const ring = new Mesh(new CylinderGeometry(6.5, 6.5, 3.2, 28, 1, true), STONE);
     ring.position.y = 1.5;
     this.vault.add(ring);
-    const well = new Mesh(new CylinderGeometry(0.62, 0.7, 0.38, 16), STONE);
-    well.position.y = 0.16;
+    const well = new Mesh(new CylinderGeometry(0.85, 0.95, 0.45, 16), STONE);
+    well.position.y = 0.18;
     this.vault.add(well);
-
-    const spots: [number, number][] = [
-      [2.55, 2.45],
-      [2.55, -2.55],
-      [-2.55, -2.55],
-      [-2.55, 2.45],
-    ];
-    for (const [x, z] of spots) {
-      const lamp = new VaultLamp(x, z);
-      this.lamps.push(lamp);
-      this.vault.add(lamp.root);
-    }
-  }
-}
-
-class VaultLamp {
-  readonly root = new Group();
-  readonly approach = new Vector3();
-  readonly picks: Mesh[] = [];
-  lit = true;
-  readonly x: number;
-  readonly z: number;
-  private readonly flame: Mesh;
-  private readonly light: PointLight;
-
-  constructor(x: number, z: number) {
-    this.x = x;
-    this.z = z;
-    this.root.position.set(x, 0, z);
-    const toward = Math.hypot(x, z) || 1;
-    this.approach.set(x - (x / toward) * 1.05, 0, z - (z / toward) * 1.05);
-
-    const plinth = new Mesh(new CylinderGeometry(0.22, 0.28, 0.18, 10), STONE);
-    plinth.position.y = 0.09;
-    plinth.castShadow = true;
-    this.root.add(plinth);
-    this.picks.push(plinth);
-    const column = new Mesh(new CylinderGeometry(0.07, 0.09, 1.05, 8), STONE);
-    column.position.y = 0.7;
-    this.root.add(column);
-    this.picks.push(column);
-    const bowl = new Mesh(new CylinderGeometry(0.16, 0.12, 0.1, 10), BRASS);
-    bowl.position.y = 1.24;
-    this.root.add(bowl);
-    this.picks.push(bowl);
-
-    this.flame = new Mesh(
-      new SphereGeometry(0.09, 10, 8),
-      new MeshBasicMaterial({ color: new Color(4.4, 2.6, 0.9) }),
+    const heart = new Mesh(
+      new SphereGeometry(0.12, 12, 10),
+      new MeshBasicMaterial({ color: new Color(3.6, 2.2, 0.8) }),
     );
-    this.flame.position.y = 1.4;
-    this.root.add(this.flame);
-    this.light = new PointLight("#ffc070", 1.7, 6.5, 1.45);
-    this.light.position.y = 1.45;
-    this.root.add(this.light);
-  }
-
-  owns(object: object): boolean {
-    return this.picks.includes(object as Mesh);
-  }
-
-  snuff(): void {
-    this.lit = false;
-    this.light.intensity = 0;
-    (this.flame.material as MeshBasicMaterial).color.set("#2a2018");
-    this.flame.scale.setScalar(0.45);
+    heart.position.y = 1.15;
+    this.vault.add(heart);
+    const glow = new PointLight("#ffc878", 1.6, 9, 1.4);
+    glow.position.set(0, 1.4, 0);
+    this.vault.add(glow);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const moth = new Mesh(
+        new SphereGeometry(0.04, 8, 6),
+        new MeshBasicMaterial({ color: new Color(3.1, 2.5, 1.2) }),
+      );
+      moth.position.set(Math.cos(a) * 2.1, 1.4, Math.sin(a) * 2.1);
+      this.vault.add(moth);
+    }
   }
 }
 

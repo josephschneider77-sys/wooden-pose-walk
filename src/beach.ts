@@ -9,8 +9,6 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
-import type { Disc } from "./collide";
-
 const SAND = new MeshPhysicalMaterial({ color: "#e2c48a", roughness: 0.92 });
 const SEA = new MeshPhysicalMaterial({
   color: "#3a8fc4",
@@ -27,7 +25,6 @@ const WOOD = new MeshPhysicalMaterial({ color: "#8a5a32", roughness: 0.7 });
 
 export class Beach {
   readonly root = new Group();
-  readonly discs: Disc[] = [];
   private readonly water: Mesh;
 
   constructor() {
@@ -67,7 +64,6 @@ export class Beach {
   }
 
   private palm(x: number, z: number): void {
-    this.discs.push({ x, z, r: 0.55 });
     const trunk = new Mesh(new CylinderGeometry(0.11, 0.16, 2.35, 8), TRUNK);
     trunk.position.set(x, 1.15, z);
     trunk.castShadow = true;
@@ -83,7 +79,6 @@ export class Beach {
   }
 
   private rock(x: number, z: number, s: number): void {
-    this.discs.push({ x, z, r: s + 0.12 });
     const mesh = new Mesh(new SphereGeometry(s, 8, 6), ROCK);
     mesh.scale.set(1.3, 0.7, 1.1);
     mesh.position.set(x, s * 0.45, z);
@@ -92,7 +87,6 @@ export class Beach {
   }
 
   private log(x: number, z: number): void {
-    this.discs.push({ x, z, r: 0.7 });
     const mesh = new Mesh(new CylinderGeometry(0.12, 0.14, 1.7, 8), WOOD);
     mesh.rotation.z = Math.PI / 2;
     mesh.position.set(x, 0.12, z);
