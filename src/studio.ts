@@ -365,6 +365,9 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     walker.fly = false;
     walker.speed = 0;
     world = "vault";
+    unloadUpper();
+    rooms.lawn.visible = false;
+    rooms.roof.visible = false;
     const hall = ensureBazaar();
     wardrobe.setGround(hall.vault);
     hall.root.visible = false;
