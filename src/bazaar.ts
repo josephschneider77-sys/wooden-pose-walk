@@ -72,6 +72,7 @@ export class Bazaar {
 
     this.buildStall();
     this.merchant = this.buildMerchant();
+    this.poseMerchant(0);
     this.root.add(this.merchant.root);
 
     const arch = new Mesh(new BoxGeometry(3.4, 3.1, 0.36), STONE);
@@ -198,8 +199,9 @@ export class Bazaar {
     const sash = new Mesh(new TorusGeometry(0.13, 0.018, 8, 20), CLOTH);
     sash.rotation.x = Math.PI / 2;
     figure.bone("pelvis").add(sash);
-    void attachRealisticFace(figure);
-    this.poseMerchant(0);
+    void attachRealisticFace(figure).catch(() => {
+      // Twin can stand without the scan if the face pack fails.
+    });
     return figure;
   }
 

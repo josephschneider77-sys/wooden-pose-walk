@@ -121,17 +121,41 @@ function blendNeckIntoWood(
  * Shoulders and extra bust are clipped. The remaining neck fades
  * into walnut inside the mannequin socket.
  */
-export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group> {
-  const base = import.meta.env.BASE_URL;
-  const [gltf, color, spec, normal, displacement] = await Promise.all([
-    new GLTFLoader().loadAsync(`${base}models/face/LeePerrySmith.glb`),
-    loadTexture(`${base}models/face/color.jpg`, true),
-    loadTexture(`${base}models/face/spec.jpg`, false),
-    loadTexture(`${base}models/face/normal.jpg`, false),
-    loadTexture(`${base}models/face/displacement.jpg`, false),
-  ]);
+interface FaceAssets {
+  mesh: Mesh;
+  color: Texture;
+  normal: Texture;
+  displacement: Texture;
+  roughness: CanvasTexture;
+  woodMap: Texture;
+}
 
-  const scan = firstMesh(gltf.scene);
+let faceAssets: Promise<FaceAssets> | null = null;
+
+function loadFaceAssets(): Promise<FaceAssets> {
+  if (!faceAssets) {
+    const base = import.meta.env.BASE_URL;
+    faceAssets = Promise.all([
+      new GLTFLoader().loadAsync(`${base}models/face/LeePerrySmith.glb`),
+      loadTexture(`${base}models/face/color.jpg`, true),
+      loadTexture(`${base}models/face/spec.jpg`, false),
+      loadTexture(`${base}models/face/normal.jpg`, false),
+      loadTexture(`${base}models/face/displacement.jpg`, false),
+    ]).then(([gltf, color, spec, normal, displacement]) => ({
+      mesh: firstMesh(gltf.scene),
+      color,
+      normal,
+      displacement,
+      roughness: specToRoughness(spec),
+      woodMap: createWoodMaps("#c08a4a", 14, "walnut", 256).map,
+    }));
+  }
+  return faceAssets;
+}
+
+export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group> {
+  const pack = await loadFaceAssets();
+  const scan = pack.mesh.clone();
   scan.position.set(0, 0, 0);
   scan.rotation.set(0, 0, 0);
   scan.scale.set(1, 1, 1);
@@ -147,17 +171,15 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
   const skinStart = ymin + span * 0.56;
   const visible = ymax - clipBottom;
 
-  const roughnessMap = specToRoughness(spec);
-  const wood = createWoodMaps("#c08a4a", 14, "walnut", 256);
   const material = new MeshPhysicalMaterial({
     name: "skin",
-    map: color,
-    normalMap: normal,
+    map: pack.color,
+    normalMap: pack.normal,
     normalScale: new Vector2(0.95, 0.95),
-    roughnessMap,
+    roughnessMap: pack.roughness,
     roughness: 0.44,
     metalness: 0,
-    displacementMap: displacement,
+    displacementMap: pack.displacement,
     displacementScale: 0.0024,
     displacementBias: -0.0008,
     sheen: 0.42,
@@ -167,7 +189,7 @@ export async function attachRealisticFace(figure: WoodenMannequin): Promise<Grou
     clearcoatRoughness: 0.5,
     envMapIntensity: 0.62,
   });
-  blendNeckIntoWood(material, wood.map, clipBottom, skinStart, xExtent * 0.38);
+  blendNeckIntoWood(material, pack.woodMap, clipBottom, skinStart, xExtent * 0.38);
   scan.material = material;
   scan.castShadow = true;
   scan.receiveShadow = true;

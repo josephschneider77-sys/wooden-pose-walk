@@ -54,6 +54,7 @@ import { bindShop, type Purse } from "./shop";
 import { CELLAR_Y, Stairwell } from "./stairwell";
 import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
+import { Boot } from "./boot";
 
 type World = "lawn" | "roof" | "bazaar" | "vault";
 
@@ -71,9 +72,11 @@ interface Grab {
   plane: Plane;
 }
 
-export function startStudio(canvas: HTMLCanvasElement): void {
+export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promise<void> {
   const hint = document.querySelector("#hint") as HTMLParagraphElement;
 
+  boot.show("Starting WebGL…", 0.22);
+  await Boot.frame();
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -102,20 +105,34 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   controls.maxDistance = 12;
   controls.target.set(0, 0.95, 0);
 
+  boot.show("Laying the lawn…", 0.36);
+  await Boot.frame();
   const rooms = buildRooms(scene);
   const key = rooms.key;
   let world: World = "lawn";
-  const bazaar = new Bazaar();
-  scene.add(bazaar.root);
-  scene.add(bazaar.vault);
+  let bazaar: Bazaar | null = null;
+  const ensureBazaar = (): Bazaar => {
+    if (!bazaar) {
+      bazaar = new Bazaar();
+      scene.add(bazaar.root);
+      scene.add(bazaar.vault);
+    }
+    return bazaar;
+  };
   const purse: Purse = { coins: 0 };
   const purseEl = document.querySelector("#purse") as HTMLParagraphElement;
   const purseCoins = document.querySelector("#purse-coins") as HTMLElement;
   const shopRoot = document.querySelector("#shop") as HTMLElement;
 
+  boot.show("Carving the figure…", 0.52);
+  await Boot.frame();
   const figure = new WoodenMannequin();
   scene.add(figure.root);
-  void attachRealisticFace(figure);
+  void attachRealisticFace(figure).catch(() => {
+    // Wooden skull stays if the face pack fails.
+  });
+  boot.show("Hanging the cloak…", 0.68);
+  await Boot.frame();
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(rooms.lawn, figure);
@@ -289,9 +306,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     walker.speed = 0;
     unloadUpper();
     world = "bazaar";
-    bazaar.root.visible = true;
-    bazaar.vault.visible = false;
-    wardrobe.setGround(bazaar.root);
+    const hall = ensureBazaar();
+    hall.root.visible = true;
+    hall.vault.visible = false;
+    wardrobe.setGround(hall.root);
     paintLook();
     placeFigure(0, 0, 4.6);
     walker.yaw = Math.PI;
@@ -310,9 +328,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     walker.fly = false;
     walker.speed = 0;
     world = "vault";
-    wardrobe.setGround(bazaar.vault);
-    bazaar.root.visible = false;
-    bazaar.vault.visible = true;
+    const hall = ensureBazaar();
+    wardrobe.setGround(hall.vault);
+    hall.root.visible = false;
+    hall.vault.visible = true;
     paintLook();
     placeFigure(0, 0, 2.4);
     walker.yaw = Math.PI;
@@ -468,8 +487,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       !windowsGone &&
       pickWindow(raycaster, activeWindow());
     const onMelons = world === "roof" && rooms.melons.hit(raycaster);
-    const onMerchant = world === "bazaar" && bazaar.hit(raycaster);
-    const onGate = world === "bazaar" && bazaar.nearGate(figure.root.position.x, figure.root.position.z);
+    const onMerchant = world === "bazaar" && !!bazaar?.hit(raycaster);
+    const onGate =
+      world === "bazaar" &&
+      !!bazaar?.nearGate(figure.root.position.x, figure.root.position.z);
     canvas.style.cursor =
       hover ? "grab" : wearHover || onWindow || onMelons || onMerchant ? "pointer" : "";
     if (!grab) {
@@ -563,7 +584,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       hint.textContent = `Walking to the ${wearHit.title}`;
       return;
     }
-    if (world === "bazaar" && bazaar.hit(raycaster)) {
+    if (world === "bazaar" && bazaar?.hit(raycaster)) {
       if (bazaar.inShopRange(figure.root.position.x, figure.root.position.z)) {
         shop.open();
         hint.textContent = "The twin waits for a trade";
@@ -646,7 +667,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
   });
 
+  boot.show("Lighting the studio…", 0.84);
+  await Boot.frame();
   const pipeline = createImagePipeline(renderer, scene, camera);
+  boot.show("First frame…", 0.94);
 
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -721,7 +745,12 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     ) {
       enterWorld(world === "lawn" ? "roof" : "lawn");
     }
-    if (world === "bazaar" && pendingShop && arrived && bazaar.inShopRange(figure.root.position.x, figure.root.position.z)) {
+    if (
+      world === "bazaar" &&
+      pendingShop &&
+      arrived &&
+      bazaar?.inShopRange(figure.root.position.x, figure.root.position.z)
+    ) {
       pendingShop = false;
       shop.open();
       hint.textContent = "The twin waits for a trade";
@@ -790,7 +819,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     wardrobe.setThrust(flying, time);
     cape.setPack(wardrobe.isWorn("jetpack"));
 
-    if (world === "bazaar") {
+    if (world === "bazaar" && bazaar) {
       bazaar.poseMerchant(time);
       figure.worldPos("chest", holdWorld);
       const wasShut = !bazaar.gateOpen;
@@ -860,6 +889,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     snapKeyShadow(key, follow);
 
     pipeline.render(true, true, true, false);
+    boot.dismiss();
     requestAnimationFrame(tick);
   };
 

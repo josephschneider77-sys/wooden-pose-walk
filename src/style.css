@@ -27,6 +27,60 @@ body,
   touch-action: none;
 }
 
+.boot {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: #c5d4ae;
+  text-align: center;
+}
+
+.boot-title {
+  margin: 0;
+  font-size: 1.55rem;
+  color: #3a2414;
+}
+
+.boot-status {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.98rem;
+  line-height: 1.4;
+  color: #2f4a22;
+}
+
+.boot-track {
+  width: min(16rem, 70vw);
+  height: 7px;
+  margin: 8px auto 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(47, 74, 34, 0.18);
+}
+
+.boot-fill {
+  display: block;
+  width: 8%;
+  height: 100%;
+  border-radius: inherit;
+  background: #3a2414;
+  transition: width 0.28s ease;
+}
+
+.boot-error .boot-status {
+  color: #6b2218;
+}
+
+.boot-out {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
 .hint {
   position: absolute;
   z-index: 2;

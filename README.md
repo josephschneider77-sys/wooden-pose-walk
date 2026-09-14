@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (default port **43217**, path `/wooden-pose-walk/`).
+Then open the URL Vite prints (default port **43217**, path `/wooden-pose-walk/`). A loading screen stays up until the first frame, and says if the first visit is still pulling assets.
 
 ```bash
 npm run build
