@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   Color,
   CylinderGeometry,
+  DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -42,7 +43,7 @@ export class Bazaar {
   private readonly lanternGlow: PointLight;
   private unlock = 0;
   private readonly lamps: VaultLamp[] = [];
-  private vaultAmbient = new AmbientLight("#e8d4a8", 0.52);
+  private vaultAmbient = new AmbientLight("#ffe8c4", 0.78);
 
   constructor() {
     this.root.name = "bazaar";
@@ -312,17 +313,22 @@ export class Bazaar {
   }
 
   private buildVault(): void {
-    const floor = new Mesh(new CylinderGeometry(6.4, 6.4, 0.18, 28), SLAB);
+    const floor = new Mesh(new CylinderGeometry(8.4, 8.4, 0.18, 28), SLAB);
     floor.position.y = -0.09;
     floor.receiveShadow = true;
     this.vault.add(floor);
     this.vault.add(this.vaultAmbient);
-    const ring = new Mesh(new CylinderGeometry(6.5, 6.5, 3.2, 28, 1, true), STONE);
-    ring.position.y = 1.5;
+    const ringMat = STONE.clone();
+    ringMat.side = DoubleSide;
+    const ring = new Mesh(new CylinderGeometry(8.5, 8.5, 4.6, 32, 1, true), ringMat);
+    ring.position.y = 2.3;
     this.vault.add(ring);
     const well = new Mesh(new CylinderGeometry(0.62, 0.7, 0.38, 16), STONE);
     well.position.y = 0.16;
     this.vault.add(well);
+    const fill = new PointLight("#ffe4c0", 1.15, 18, 1.25);
+    fill.position.set(0, 2.55, 0);
+    this.vault.add(fill);
 
     const spots: [number, number][] = [
       [2.55, 2.45],
@@ -375,7 +381,7 @@ class VaultLamp {
     );
     this.flame.position.y = 1.4;
     this.root.add(this.flame);
-    this.light = new PointLight("#ffc070", 1.7, 6.5, 1.45);
+    this.light = new PointLight("#ffc070", 2.35, 9.5, 1.2);
     this.light.position.y = 1.45;
     this.root.add(this.light);
   }

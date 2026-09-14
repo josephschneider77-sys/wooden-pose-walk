@@ -286,15 +286,15 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       renderer.toneMappingExposure = 1.2;
       scene.environmentIntensity = 0.5;
     } else if (world === "vault") {
-      scene.background = new Color("#1a1620");
-      scene.fog = new Fog("#1a1620", 12, 26);
-      rooms.sky.color.set("#d8c8a0");
-      rooms.sky.groundColor.set("#1a1410");
-      rooms.sky.intensity = 0.7;
-      rooms.key.color.set("#e8d4a0");
-      rooms.key.intensity = 1.05;
-      renderer.toneMappingExposure = 1.15;
-      scene.environmentIntensity = 0.45;
+      scene.background = new Color("#3a2e26");
+      scene.fog = new Fog("#3a2e26", 14, 28);
+      rooms.sky.color.set("#ffd8b0");
+      rooms.sky.groundColor.set("#4a3828");
+      rooms.sky.intensity = 0.95;
+      rooms.key.color.set("#ffd0a0");
+      rooms.key.intensity = 1.4;
+      renderer.toneMappingExposure = 1.22;
+      scene.environmentIntensity = 0.55;
     } else {
       scene.background = new Color("#9ec8e6");
       scene.fog = new Fog("#b7d6ea", 18, 42);
@@ -370,12 +370,14 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     hall.root.visible = false;
     hall.vault.visible = true;
     paintLook();
-    placeFigure(0, 0, 4.15, {
-      cam: new Vector3(2.6, 1.9, 6.1),
-      look: new Vector3(0, 0.95, 0.4),
+    placeFigure(0, 0, 1.6, {
+      cam: new Vector3(2.35, 1.85, 3.4),
+      look: new Vector3(0, 0.95, -0.15),
     });
     walker.yaw = Math.PI;
     releasePose();
+    controls.minDistance = 1.4;
+    controls.maxDistance = 5.8;
     syncPurse();
     hint.textContent = "Walk to each vault light. They die as you reach them.";
   };
@@ -401,6 +403,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     });
     walker.yaw = 0;
     releasePose();
+    controls.minDistance = 1.6;
+    controls.maxDistance = 14;
     syncPurse();
     hint.textContent = "The vault is gone. Sand and water — a new level.";
   };
@@ -704,7 +708,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       return;
     }
     const reach =
-      world === "roof" ? 10.2 : world === "beach" ? 14 : world === "bazaar" || world === "vault" ? 8.2 : ROOM + 0.4;
+      world === "roof" ? 10.2 : world === "beach" ? 14 : world === "vault" ? 9.5 : world === "bazaar" ? 8.2 : ROOM + 0.4;
     if (
       pickGround(
         event,
@@ -717,7 +721,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       )
     ) {
       const pad =
-        world === "roof" ? 10 : world === "beach" ? 12 : world === "bazaar" || world === "vault" ? 5.6 : ROOM;
+        world === "roof" ? 10 : world === "beach" ? 12 : world === "vault" ? 7.4 : world === "bazaar" ? 5.6 : ROOM;
       floorPoint.x = clamp(floorPoint.x, -pad, pad);
       floorPoint.z = clamp(floorPoint.z, -pad, pad);
       if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
