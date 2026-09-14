@@ -12,7 +12,9 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 - **Jetpack** — single tap still walks; double-tap the grass to fly there
 - **Knife** — wear it (or pick it up off the terrace table), then **drag the right arm** so the blade cuts the three watermelons. Walking up or tapping the table will not chop them
 - **After the fruit is chopped** — the window vanishes and a stairwell opens in the terrace. Walk into the hole to leave the lawn and rooftop behind
-- **Undercroft bazaar** — a one-way new level. The twin (a merchant who looks like him) buys worn finds for coppers. Spend **15** on his brass lantern, then hold it to the moth-gate to open the vault. There is no way back
+- **Undercroft bazaar** — a one-way new level. The twin (a merchant who looks like him) buys worn finds for coppers. Spend **15** on his brass lantern, then hold it to the moth-gate and walk through the arch
+- **Vault lights** — four braziers stand apart from the well and from each other. Walk up to each; it goes out. When the last dies, he is teleported to a beach
+- **Beach** — sand, water, palms, and rocks with their own space so they do not sit inside one another
 - **Glowing window** — it keeps a wooden frame until every lawn find is worn, then the frame drops and only the light remains. With the jetpack on, tap it to fly through to a night rooftop. Tap the window there to come home — until the watermelons are chopped
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom

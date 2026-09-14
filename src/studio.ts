@@ -48,6 +48,8 @@ import { attachRealisticFace } from "./face";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
 import { Bazaar, disposeTree, STALL_FRONT } from "./bazaar";
+import { BEACH_SPAWN, Beach } from "./beach";
+import { keepOffDiscs } from "./collide";
 import { MelonBoard } from "./melons";
 import { createRooftop, PORTAL } from "./rooftop";
 import { bindShop, type Purse } from "./shop";
@@ -56,7 +58,7 @@ import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 import { Boot } from "./boot";
 
-type World = "lawn" | "roof" | "bazaar" | "vault";
+type World = "lawn" | "roof" | "bazaar" | "vault" | "beach";
 
 const ROOM = 8.4;
 const SOFTENING = 0.012;
@@ -111,6 +113,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
   const key = rooms.key;
   let world: World = "lawn";
   let bazaar: Bazaar | null = null;
+  let beach: Beach | null = null;
   const ensureBazaar = (): Bazaar => {
     if (!bazaar) {
       bazaar = new Bazaar();
@@ -118,6 +121,13 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       scene.add(bazaar.vault);
     }
     return bazaar;
+  };
+  const ensureBeach = (): Beach => {
+    if (!beach) {
+      beach = new Beach();
+      scene.add(beach.root);
+    }
+    return beach;
   };
   const purse: Purse = { coins: 0 };
   const purseEl = document.querySelector("#purse") as HTMLParagraphElement;
@@ -230,7 +240,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
 
   const syncPurse = (): void => {
     purseCoins.textContent = String(purse.coins);
-    purseEl.hidden = world !== "bazaar" && world !== "vault";
+    purseEl.hidden = world !== "bazaar";
   };
 
   const shop = bindShop(shopRoot, wardrobe, purse, (message) => {
@@ -242,8 +252,10 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
   const paintLook = (): void => {
     document.body.classList.toggle("night", world === "roof");
     document.body.classList.toggle("bazaar", world === "bazaar" || world === "vault");
+    document.body.classList.toggle("beach", world === "beach");
     hint.classList.toggle("night", world === "roof");
     hint.classList.toggle("bazaar", world === "bazaar" || world === "vault");
+    hint.classList.toggle("beach", world === "beach");
     if (world === "lawn") {
       scene.background = new Color("#c5d4ae");
       scene.fog = new Fog("#c5d4ae", 13, 30);
@@ -274,7 +286,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       rooms.key.intensity = 1.35;
       renderer.toneMappingExposure = 1.2;
       scene.environmentIntensity = 0.5;
-    } else {
+    } else if (world === "vault") {
       scene.background = new Color("#1a1620");
       scene.fog = new Fog("#1a1620", 12, 26);
       rooms.sky.color.set("#d8c8a0");
@@ -284,6 +296,16 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       rooms.key.intensity = 1.05;
       renderer.toneMappingExposure = 1.15;
       scene.environmentIntensity = 0.45;
+    } else {
+      scene.background = new Color("#9ec8e6");
+      scene.fog = new Fog("#b7d6ea", 18, 42);
+      rooms.sky.color.set("#fff4dc");
+      rooms.sky.groundColor.set("#d2b48c");
+      rooms.sky.intensity = 0.92;
+      rooms.key.color.set("#fff1c8");
+      rooms.key.intensity = 1.55;
+      renderer.toneMappingExposure = 1.12;
+      scene.environmentIntensity = 0.48;
     }
   };
 
@@ -349,14 +371,39 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     hall.root.visible = false;
     hall.vault.visible = true;
     paintLook();
-    placeFigure(0, 0, 2.2, {
-      cam: new Vector3(3.1, 1.85, 4.6),
-      look: new Vector3(0, 0.9, 0.2),
+    placeFigure(0, 0, 4.15, {
+      cam: new Vector3(2.6, 1.9, 6.1),
+      look: new Vector3(0, 0.95, 0.4),
     });
     walker.yaw = Math.PI;
     releasePose();
     syncPurse();
-    hint.textContent = "A new level. The moths keep this vault — there is no way back.";
+    hint.textContent = "Walk to each vault light. They die as you reach them.";
+  };
+
+  const enterBeach = (): void => {
+    lastPortal = performance.now() / 1000;
+    shop.close();
+    walker.destination = null;
+    walker.fly = false;
+    walker.speed = 0;
+    world = "beach";
+    if (bazaar) {
+      bazaar.root.visible = false;
+      bazaar.vault.visible = false;
+    }
+    const shore = ensureBeach();
+    shore.root.visible = true;
+    wardrobe.setGround(shore.root);
+    paintLook();
+    placeFigure(BEACH_SPAWN.x, 0, BEACH_SPAWN.z, {
+      cam: new Vector3(3.6, 2.05, 3.8),
+      look: new Vector3(0.2, 0.9, 1.2),
+    });
+    walker.yaw = 0;
+    releasePose();
+    syncPurse();
+    hint.textContent = "The vault is gone. Sand and water — a new level.";
   };
 
   const goTo = (point: Vector3, fly: boolean): void => {
@@ -403,7 +450,12 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
   const pointerState = { x: 0, y: 0, moved: false };
   let hover: LimbId | null = null;
 
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("bazaar")) {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("beach")) {
+    enterBeach();
+  } else if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("vault")) {
+    wardrobe.forceWear("lantern");
+    enterVault();
+  } else if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("bazaar")) {
     wardrobe.forceWear("jetpack");
     wardrobe.forceWear("sword");
     wardrobe.forceWear("shirt");
@@ -507,11 +559,12 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       pickWindow(raycaster, activeWindow());
     const onMelons = world === "roof" && rooms.melons.hit(raycaster);
     const onMerchant = world === "bazaar" && !!bazaar?.hit(raycaster);
+    const onLamp = world === "vault" && !!bazaar?.lampApproach(raycaster, floorPoint);
     const onGate =
       world === "bazaar" &&
       !!bazaar?.nearGate(figure.root.position.x, figure.root.position.z);
     canvas.style.cursor =
-      hover ? "grab" : wearHover || onWindow || onMelons || onMerchant ? "pointer" : "";
+      hover ? "grab" : wearHover || onWindow || onMelons || onMerchant || onLamp ? "pointer" : "";
     if (!grab) {
       if (hover) {
         hint.textContent = `Drag the ${limbLabel(hover)} to pose it`;
@@ -531,6 +584,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
           : "Tap to fly through the window";
       } else if (onWindow) {
         hint.textContent = "The jetpack is by the window — walk to it first";
+      } else if (onLamp) {
+        hint.textContent = "Tap a vault light — walk close and it goes out";
       } else if (onMerchant) {
         hint.textContent = "Tap the twin — he will buy what you wear and sell a lantern";
       } else if (world === "bazaar" && wardrobe.isWorn("lantern") && onGate) {
@@ -540,7 +595,11 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
           ? "Walk the lantern to the sealed arch at the far end"
           : "Sell worn finds to the twin, then buy his brass lantern";
       } else if (world === "vault") {
-        hint.textContent = "A new level. The moths keep this vault — there is no way back.";
+        hint.textContent = bazaar
+          ? `${bazaar.remainingLamps()} vault lights still burn — walk to each`
+          : "Walk to each vault light";
+      } else if (world === "beach") {
+        hint.textContent = "The vault is gone. Sand and water — a new level.";
       } else if (windowsGone && world === "roof") {
         hint.textContent = rooms.stairs.open
           ? "Walk into the stairwell — it drops to a new level"
@@ -603,6 +662,11 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       hint.textContent = `Walking to the ${wearHit.title}`;
       return;
     }
+    if (world === "vault" && bazaar?.lampApproach(raycaster, floorPoint)) {
+      goTo(floorPoint, false);
+      hint.textContent = "Walking to a vault light";
+      return;
+    }
     if (world === "bazaar" && bazaar?.hit(raycaster)) {
       if (bazaar.inShopRange(figure.root.position.x, figure.root.position.z)) {
         shop.open();
@@ -640,7 +704,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       }
       return;
     }
-    const reach = world === "roof" ? 10.2 : world === "bazaar" || world === "vault" ? 8.2 : ROOM + 0.4;
+    const reach =
+      world === "roof" ? 10.2 : world === "beach" ? 14 : world === "bazaar" || world === "vault" ? 8.2 : ROOM + 0.4;
     if (
       pickGround(
         event,
@@ -652,7 +717,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
         world === "roof" && rooms.stairs.open ? rooms.stairs : null,
       )
     ) {
-      const pad = world === "roof" ? 10 : world === "bazaar" || world === "vault" ? 7.4 : ROOM;
+      const pad =
+        world === "roof" ? 10 : world === "beach" ? 12 : world === "bazaar" || world === "vault" ? 5.6 : ROOM;
       floorPoint.x = clamp(floorPoint.x, -pad, pad);
       floorPoint.z = clamp(floorPoint.z, -pad, pad);
       if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
@@ -839,6 +905,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     cape.setPack(wardrobe.isWorn("jetpack"));
 
     if (world === "bazaar" && bazaar) {
+      keepOffDiscs(figure.root.position, bazaar.hallDiscs);
       bazaar.poseMerchant(time);
       figure.worldPos("chest", holdWorld);
       const wasShut = !bazaar.gateOpen;
@@ -849,6 +916,26 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
       if (time - lastPortal > 0.8 && bazaar.throughGate(figure.root.position.x, figure.root.position.z)) {
         enterVault();
       }
+    }
+    if (world === "vault" && bazaar) {
+      keepOffDiscs(figure.root.position, bazaar.vaultDiscs);
+      if (bazaar.snuffNear(figure.root.position.x, figure.root.position.z)) {
+        const left = bazaar.remainingLamps();
+        hint.textContent =
+          left === 0
+            ? "The last light died. The vault lets go…"
+            : left === 1
+              ? "One vault light still burns"
+              : `${left} vault lights still burn`;
+        if (left === 0) lastPortal = time;
+      }
+      if (bazaar.allDark() && time - lastPortal > 0.85) {
+        enterBeach();
+      }
+    }
+    if (world === "beach" && beach) {
+      keepOffDiscs(figure.root.position, beach.discs);
+      beach.sway(time);
     }
 
     const focus = grab?.id ?? hover;

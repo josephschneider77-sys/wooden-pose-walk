@@ -116,6 +116,15 @@ body.bazaar {
   text-shadow: 0 1px 0 rgba(20, 10, 6, 0.85);
 }
 
+body.beach {
+  background: #9ec8e6;
+}
+
+.hint.beach {
+  color: #2a3a28;
+  text-shadow: 0 1px 0 rgba(230, 240, 220, 0.7);
+}
+
 .purse {
   position: absolute;
   z-index: 2;
