@@ -47,11 +47,15 @@ import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
+import { Bazaar, disposeTree, STALL_FRONT } from "./bazaar";
 import { MelonBoard } from "./melons";
 import { createRooftop, PORTAL } from "./rooftop";
+import { bindShop, type Purse } from "./shop";
 import { CELLAR_Y, Stairwell } from "./stairwell";
 import { LawnWardrobe } from "./wearables";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
+
+type World = "lawn" | "roof" | "bazaar" | "vault";
 
 const ROOM = 8.4;
 const SOFTENING = 0.012;
@@ -100,7 +104,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   const rooms = buildRooms(scene);
   const key = rooms.key;
-  let world: "lawn" | "roof" = "lawn";
+  let world: World = "lawn";
+  const bazaar = new Bazaar();
+  scene.add(bazaar.root);
+  scene.add(bazaar.vault);
+  const purse: Purse = { coins: 0 };
+  const purseEl = document.querySelector("#purse") as HTMLParagraphElement;
+  const purseCoins = document.querySelector("#purse-coins") as HTMLElement;
+  const shopRoot = document.querySelector("#shop") as HTMLElement;
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
@@ -124,10 +135,13 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const walker = createWalker();
   let lastPortal = -10;
   let windowsGone = false;
+  let pendingShop = false;
+  let upperCleared = false;
   const DOUBLE_MS = 320;
   let pendingGo: { at: number; point: Vector3 } | null = null;
   const leftToe = new Vector3();
   const rightToe = new Vector3();
+  const follow = new Vector3();
 
   const activeWindow = (): Mesh => (world === "lawn" ? rooms.window : rooms.returnWindow);
 
@@ -147,7 +161,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     rooms.floorPlug.visible = false;
     controls.maxPolarAngle = Math.PI * 0.94;
     controls.maxDistance = 18;
-    hint.textContent = "The window is gone. A stairwell tore open in the slate — walk down.";
+    hint.textContent = "The window is gone. Walk the stairwell — it drops you into a new level.";
   };
 
   const syncWindowLook = (): void => {
@@ -197,14 +211,133 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     snapFeet();
   };
 
+  const syncPurse = (): void => {
+    purseCoins.textContent = String(purse.coins);
+    purseEl.hidden = world !== "bazaar" && world !== "vault";
+  };
+
+  const shop = bindShop(shopRoot, wardrobe, purse, (message) => {
+    cape.setPack(wardrobe.isWorn("jetpack"));
+    syncPurse();
+    hint.textContent = message;
+  });
+
+  const paintLook = (): void => {
+    document.body.classList.toggle("night", world === "roof");
+    document.body.classList.toggle("bazaar", world === "bazaar" || world === "vault");
+    hint.classList.toggle("night", world === "roof");
+    hint.classList.toggle("bazaar", world === "bazaar" || world === "vault");
+    if (world === "lawn") {
+      scene.background = new Color("#c5d4ae");
+      scene.fog = new Fog("#c5d4ae", 13, 30);
+      rooms.sky.color.set("#eef6ff");
+      rooms.sky.groundColor.set("#4a6b32");
+      rooms.sky.intensity = 0.62;
+      rooms.key.color.set("#fff4d8");
+      rooms.key.intensity = 1.48;
+    } else if (world === "roof") {
+      scene.background = new Color("#0b1220");
+      scene.fog = new Fog("#0b1220", 16, 36);
+      rooms.sky.color.set("#1a2740");
+      rooms.sky.groundColor.set("#0a0c10");
+      rooms.sky.intensity = 0.38;
+      rooms.key.color.set("#c8d4f0");
+      rooms.key.intensity = 0.7;
+    } else if (world === "bazaar") {
+      scene.background = new Color("#140c0a");
+      scene.fog = new Fog("#140c0a", 10, 22);
+      rooms.sky.color.set("#4a2a18");
+      rooms.sky.groundColor.set("#1a0c08");
+      rooms.sky.intensity = 0.42;
+      rooms.key.color.set("#ffb070");
+      rooms.key.intensity = 0.55;
+    } else {
+      scene.background = new Color("#0c0a10");
+      scene.fog = new Fog("#0c0a10", 8, 18);
+      rooms.sky.color.set("#2a2438");
+      rooms.sky.groundColor.set("#08060a");
+      rooms.sky.intensity = 0.34;
+      rooms.key.color.set("#d8c898");
+      rooms.key.intensity = 0.4;
+    }
+  };
+
+  const unloadUpper = (): void => {
+    if (upperCleared) return;
+    upperCleared = true;
+    disposeTree(rooms.lawn);
+    disposeTree(rooms.roof);
+  };
+
+  const placeFigure = (x: number, y: number, z: number): void => {
+    const offset = camera.position.clone().sub(controls.target);
+    figure.root.position.set(x, y, z);
+    figure.refreshWorld();
+    cape.snap();
+    figure.worldPos("chest", follow);
+    follow.y += 0.08;
+    controls.target.copy(follow);
+    camera.position.copy(follow).add(offset);
+  };
+
+  const enterBazaar = (): void => {
+    lastPortal = performance.now() / 1000;
+    shop.close();
+    pendingShop = false;
+    walker.destination = null;
+    walker.fly = false;
+    walker.speed = 0;
+    unloadUpper();
+    world = "bazaar";
+    bazaar.root.visible = true;
+    bazaar.vault.visible = false;
+    wardrobe.setGround(bazaar.root);
+    paintLook();
+    placeFigure(0, 0, 4.6);
+    walker.yaw = Math.PI;
+    releasePose();
+    controls.maxPolarAngle = Math.PI * 0.86;
+    controls.maxDistance = 12;
+    syncPurse();
+    hint.textContent =
+      "The lawn and terrace are gone. Sell what you wear to the twin, then buy his lantern.";
+  };
+
+  const enterVault = (): void => {
+    lastPortal = performance.now() / 1000;
+    shop.close();
+    walker.destination = null;
+    walker.fly = false;
+    walker.speed = 0;
+    world = "vault";
+    wardrobe.setGround(bazaar.vault);
+    bazaar.root.visible = false;
+    bazaar.vault.visible = true;
+    paintLook();
+    placeFigure(0, 0, 2.4);
+    walker.yaw = Math.PI;
+    releasePose();
+    syncPurse();
+    hint.textContent = "A new level. The moths keep this vault — there is no way back.";
+  };
+
   const goTo = (point: Vector3, fly: boolean): void => {
     if (!grab) releasePose();
-    setDestination(walker, point, fly);
+    const canFly = fly && (world === "lawn" || world === "roof");
+    setDestination(walker, point, canFly);
     const down =
       world === "roof" &&
       rooms.stairs.open &&
       point.distanceTo(rooms.stairs.walkIn) < 0.35;
-    hint.textContent = fly ? "Flying there" : down ? "Walking down the stairwell" : "Walking there";
+    const stall =
+      world === "bazaar" && point.distanceTo(STALL_FRONT) < 0.35;
+    hint.textContent = canFly
+      ? "Flying there"
+      : down
+        ? "Walking down the stairwell"
+        : stall
+          ? "Walking to the merchant"
+          : "Walking there";
   };
 
   const highlight = new Mesh(
@@ -232,7 +365,13 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const pointerState = { x: 0, y: 0, moved: false };
   let hover: LimbId | null = null;
 
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("cellar")) {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("bazaar")) {
+    wardrobe.forceWear("jetpack");
+    wardrobe.forceWear("sword");
+    wardrobe.forceWear("shirt");
+    cape.setPack(true);
+    enterBazaar();
+  } else if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("cellar")) {
     wardrobe.forceWear("jetpack");
     wardrobe.forceWear("sword");
     rooms.melons.chop();
@@ -323,10 +462,16 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     hover = pickLimb(event);
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
-    const wearHover = wardrobe.hit(raycaster);
-    const onWindow = !windowsGone && pickWindow(raycaster, activeWindow());
+    const wearHover = world === "lawn" || world === "roof" ? wardrobe.hit(raycaster) : null;
+    const onWindow =
+      (world === "lawn" || world === "roof") &&
+      !windowsGone &&
+      pickWindow(raycaster, activeWindow());
     const onMelons = world === "roof" && rooms.melons.hit(raycaster);
-    canvas.style.cursor = hover ? "grab" : wearHover || onWindow || onMelons ? "pointer" : "";
+    const onMerchant = world === "bazaar" && bazaar.hit(raycaster);
+    const onGate = world === "bazaar" && bazaar.nearGate(figure.root.position.x, figure.root.position.z);
+    canvas.style.cursor =
+      hover ? "grab" : wearHover || onWindow || onMelons || onMerchant ? "pointer" : "";
     if (!grab) {
       if (hover) {
         hint.textContent = `Drag the ${limbLabel(hover)} to pose it`;
@@ -346,9 +491,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
           : "Tap to fly through the window";
       } else if (onWindow) {
         hint.textContent = "The jetpack is by the window — walk to it first";
+      } else if (onMerchant) {
+        hint.textContent = "Tap the twin — he will buy what you wear and sell a lantern";
+      } else if (world === "bazaar" && wardrobe.isWorn("lantern") && onGate) {
+        hint.textContent = "Hold the lantern to the moth-gate";
+      } else if (world === "bazaar") {
+        hint.textContent = wardrobe.isWorn("lantern")
+          ? "Walk the lantern to the sealed arch at the far end"
+          : "Sell worn finds to the twin, then buy his brass lantern";
+      } else if (world === "vault") {
+        hint.textContent = "A new level. The moths keep this vault — there is no way back.";
       } else if (windowsGone && world === "roof") {
         hint.textContent = rooms.stairs.open
-          ? "Walk into the stairwell — it drops to a lower level"
+          ? "Walk into the stairwell — it drops to a new level"
           : restHint;
       } else {
         hint.textContent = wardrobe.allWorn()
@@ -392,17 +547,30 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (pointerState.moved) return;
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
-    const wearHit = wardrobe.hit(raycaster);
-    if (wearHit?.worn) {
+    const wearHit =
+      world === "lawn" || world === "roof" || world === "bazaar" || world === "vault"
+        ? wardrobe.hit(raycaster)
+        : null;
+    if (wearHit?.worn && world !== "bazaar") {
       hint.textContent = wardrobe.takeOff(wearHit.id) ?? restHint;
       syncWindowLook();
       return;
     }
-    if (wearHit) {
+    if (wearHit && !wearHit.worn) {
       wardrobe.walkTarget(wearHit.id, floorPoint);
       floorPoint.y = 0;
       goTo(floorPoint, false);
       hint.textContent = `Walking to the ${wearHit.title}`;
+      return;
+    }
+    if (world === "bazaar" && bazaar.hit(raycaster)) {
+      if (bazaar.inShopRange(figure.root.position.x, figure.root.position.z)) {
+        shop.open();
+        hint.textContent = "The twin waits for a trade";
+      } else {
+        pendingShop = true;
+        goTo(STALL_FRONT.clone(), false);
+      }
       return;
     }
     if (world === "roof" && rooms.melons.hit(raycaster)) {
@@ -413,7 +581,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
           : "Drag the right arm — the knife — through the fruit");
       return;
     }
-    if (!windowsGone && pickWindow(raycaster, activeWindow())) {
+    if (
+      (world === "lawn" || world === "roof") &&
+      !windowsGone &&
+      pickWindow(raycaster, activeWindow())
+    ) {
       if (wardrobe.isWorn("jetpack")) {
         if (!grab) releasePose();
         setDestination(walker, rooms.portalApproach, true, 2.55);
@@ -428,7 +600,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       }
       return;
     }
-    const reach = world === "roof" ? 10.2 : ROOM + 0.4;
+    const reach = world === "roof" ? 10.2 : world === "bazaar" || world === "vault" ? 8.2 : ROOM + 0.4;
     if (
       pickGround(
         event,
@@ -440,7 +612,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         world === "roof" && rooms.stairs.open ? rooms.stairs : null,
       )
     ) {
-      const pad = world === "roof" ? 10 : ROOM;
+      const pad = world === "roof" ? 10 : world === "bazaar" || world === "vault" ? 7.4 : ROOM;
       floorPoint.x = clamp(floorPoint.x, -pad, pad);
       floorPoint.z = clamp(floorPoint.z, -pad, pad);
       if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
@@ -448,12 +620,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       }
       floorPoint.y = 0;
       const now = performance.now();
-      if (wardrobe.isWorn("jetpack") && pendingGo && now - pendingGo.at < DOUBLE_MS) {
+      if (
+        (world === "lawn" || world === "roof") &&
+        wardrobe.isWorn("jetpack") &&
+        pendingGo &&
+        now - pendingGo.at < DOUBLE_MS
+      ) {
         goTo(floorPoint, true);
         pendingGo = null;
         return;
       }
-      if (wardrobe.isWorn("jetpack")) {
+      if ((world === "lawn" || world === "roof") && wardrobe.isWorn("jetpack")) {
         pendingGo = { at: now, point: floorPoint.clone() };
         return;
       }
@@ -478,7 +655,6 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     pipeline.setSize(window.innerWidth, window.innerHeight);
   });
 
-  const follow = new Vector3();
   const holdWorld = new Vector3();
   const knifeHand = new Vector3();
   const knifeMid = new Vector3();
@@ -516,17 +692,39 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       pendingGo = null;
     }
 
-    const jet = wardrobe.isWorn("jetpack");
+    const jet = wardrobe.isWorn("jetpack") && (world === "lawn" || world === "roof");
     const groundY =
-      world === "roof" ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z) : 0;
-    const { walkWeight, flying } = steerWalker(walker, figure.root.position, dt, jet, groundY);
+      world === "roof" && !upperCleared
+        ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z)
+        : 0;
+    const { walkWeight, flying, arrived } = steerWalker(
+      walker,
+      figure.root.position,
+      dt,
+      jet,
+      groundY,
+    );
     if (
+      world === "roof" &&
+      rooms.stairs.open &&
+      time - lastPortal > 0.8 &&
+      groundY <= CELLAR_Y + 0.3
+    ) {
+      enterBazaar();
+    }
+    if (
+      (world === "lawn" || world === "roof") &&
       !windowsGone &&
       flying &&
       time - lastPortal > 1.3 &&
       throughPortal(figure.root.position)
     ) {
       enterWorld(world === "lawn" ? "roof" : "lawn");
+    }
+    if (world === "bazaar" && pendingShop && arrived && bazaar.inShopRange(figure.root.position.x, figure.root.position.z)) {
+      pendingShop = false;
+      shop.open();
+      hint.textContent = "The twin waits for a trade";
     }
     if (flying) {
       poseHover(figure, walker, time);
@@ -590,7 +788,20 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       applyHolds();
     }
     wardrobe.setThrust(flying, time);
-    cape.setPack(jet);
+    cape.setPack(wardrobe.isWorn("jetpack"));
+
+    if (world === "bazaar") {
+      bazaar.poseMerchant(time);
+      figure.worldPos("chest", holdWorld);
+      const wasShut = !bazaar.gateOpen;
+      bazaar.feedLantern(holdWorld, wardrobe.isWorn("lantern"));
+      if (wasShut && bazaar.gateOpen) {
+        hint.textContent = "The moth-gate split. Walk through — there is no way back.";
+      }
+      if (time - lastPortal > 0.8 && bazaar.throughGate(figure.root.position.x, figure.root.position.z)) {
+        enterVault();
+      }
+    }
 
     const focus = grab?.id ?? hover;
     if (focus) {
@@ -601,15 +812,20 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     cape.update(dt, time, walker.speed, walker.yaw);
-    const found = wardrobe.update(time);
-    if (found) syncWindowLook();
-    if (found && !grab) {
-      hint.textContent = wardrobe.allWorn()
-        ? "Every find is on — tap the window when you want to fly through"
-        : found;
+    if (world === "lawn" || world === "roof") {
+      const found = wardrobe.update(time);
+      if (found) syncWindowLook();
+      if (found && !grab) {
+        hint.textContent = wardrobe.allWorn()
+          ? "Every find is on — tap the window when you want to fly through"
+          : found;
+      }
     }
-    rooms.melons.showLooseKnife(world === "roof" && !wardrobe.isWorn("sword"));
+    if (!upperCleared) {
+      rooms.melons.showLooseKnife(world === "roof" && !wardrobe.isWorn("sword"));
+    }
     if (
+      !upperCleared &&
       world === "roof" &&
       !wardrobe.isWorn("sword") &&
       rooms.melons.inRange(figure.root.position.x, figure.root.position.z)
@@ -618,6 +834,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       if (took) hint.textContent = took;
     }
     if (
+      !upperCleared &&
       world === "roof" &&
       !rooms.melons.chopped &&
       wardrobe.isWorn("sword") &&
@@ -649,6 +866,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   requestAnimationFrame(tick);
 
   function enterWorld(next: "lawn" | "roof"): void {
+    if (upperCleared) return;
     lastPortal = performance.now() / 1000;
     world = next;
     applyWorld(scene, rooms, world, hint);
