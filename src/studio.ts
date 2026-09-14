@@ -107,9 +107,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
   const wardrobe = new LawnWardrobe(rooms.lawn, figure);
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("wear") === "jetpack") {
-    wardrobe.forceWear("jetpack");
-    cape.setPack(true);
+  if (import.meta.env.DEV) {
+    const wear = new URLSearchParams(window.location.search).get("wear");
+    if (wear) {
+      for (const id of wear.split(",")) {
+        if (id === "jetpack" || id === "sword") wardrobe.forceWear(id as "jetpack" | "sword");
+      }
+      cape.setPack(wardrobe.isWorn("jetpack"));
+    }
   }
   const pickList = figure.pickables();
   const restHint =
@@ -268,7 +273,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       } else if (onMelons && wardrobe.isWorn("sword")) {
         hint.textContent = "Tap to chop the watermelons";
       } else if (onMelons) {
-        hint.textContent = "You need the knife from the lawn";
+        hint.textContent = "Pick up the knife on the board, then chop";
       } else if (onWindow && (wardrobe.isWorn("jetpack") || world === "roof")) {
         hint.textContent = wardrobe.allWorn()
           ? "Tap the light to fly through"
@@ -331,11 +336,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       return;
     }
     if (world === "roof" && rooms.melons.hit(raycaster)) {
-      if (wardrobe.isWorn("sword")) {
-        hint.textContent = rooms.melons.chop();
-      } else {
-        hint.textContent = "You need the knife from the lawn";
-      }
+      hint.textContent = rooms.melons.use(wardrobe);
       return;
     }
     if (pickWindow(raycaster, activeWindow())) {
@@ -504,13 +505,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         ? "Every find is on — tap the window when you want to fly through"
         : found;
     }
-    if (
-      world === "roof" &&
-      !rooms.melons.chopped &&
-      wardrobe.isWorn("sword") &&
-      rooms.melons.inRange(figure.root.position.x, figure.root.position.z)
-    ) {
-      hint.textContent = rooms.melons.chop();
+    rooms.melons.showLooseKnife(world === "roof" && !wardrobe.isWorn("sword"));
+    if (world === "roof" && !rooms.melons.chopped && rooms.melons.inRange(figure.root.position.x, figure.root.position.z)) {
+      hint.textContent = rooms.melons.use(wardrobe);
     }
 
     figure.worldPos("chest", follow);
@@ -548,9 +545,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
     hint.textContent =
       world === "roof"
-        ? wardrobe.isWorn("sword")
-          ? "Night terrace — walk to the watermelons and chop them"
-          : "Night terrace — you need the knife to chop the watermelons"
+        ? "Night terrace — pick up the knife on the board and chop the watermelons"
         : restHint;
   }
 }
