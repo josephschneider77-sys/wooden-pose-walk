@@ -653,7 +653,7 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
     const wearHit =
-      world === "lawn" || world === "roof" || world === "bazaar" || world === "vault"
+      world === "lawn" || world === "roof" || world === "bazaar"
         ? wardrobe.hit(raycaster)
         : null;
     if (wearHit?.worn && world !== "bazaar") {

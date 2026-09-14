@@ -293,7 +293,7 @@ export class Bazaar {
       if (!lamp.lit) continue;
       const dx = x - lamp.x;
       const dz = z - lamp.z;
-      if (dx * dx + dz * dz < 1.45 * 1.45) {
+      if (dx * dx + dz * dz < 2.2 * 2.2) {
         lamp.snuff();
         this.vaultAmbient.intensity = 0.12 + 0.1 * this.remainingLamps();
         return true;
@@ -362,7 +362,7 @@ class VaultLamp {
     this.z = z;
     this.root.position.set(x, 0, z);
     const toward = Math.hypot(x, z) || 1;
-    this.approach.set(x - (x / toward) * 1.2, 0, z - (z / toward) * 1.2);
+    this.approach.set(x - (x / toward) * 0.55, 0, z - (z / toward) * 0.55);
 
     const plinth = new Mesh(new CylinderGeometry(0.22, 0.28, 0.18, 10), STONE);
     plinth.position.y = 0.09;
