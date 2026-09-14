@@ -387,6 +387,13 @@ class VaultLamp {
     this.light = new PointLight("#ffc070", 2.35, 9.5, 1.2);
     this.light.position.y = 1.45;
     this.root.add(this.light);
+    const halo = new Mesh(
+      new SphereGeometry(0.55, 10, 8),
+      new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    halo.position.y = 1.35;
+    this.root.add(halo);
+    this.picks.push(halo);
   }
 
   owns(object: object): boolean {

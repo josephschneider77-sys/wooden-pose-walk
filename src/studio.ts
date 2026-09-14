@@ -509,6 +509,8 @@ export async function startStudio(canvas: HTMLCanvasElement, boot: Boot): Promis
     pointerState.y = event.clientY;
     pointerState.moved = false;
 
+    if (world === "vault" || world === "beach") return;
+
     const id = pickLimb(event);
     if (!id) return;
 
