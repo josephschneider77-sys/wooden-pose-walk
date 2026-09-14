@@ -8,12 +8,28 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Wooden mannequin</title>
-    <script type="module" crossorigin src="/wooden-pose-walk/assets/index-C8jOnmfg.js"></script>
-    <link rel="stylesheet" crossorigin href="/wooden-pose-walk/assets/index-BPBg554K.css">
+    <script type="module" crossorigin src="/wooden-pose-walk/assets/index-D0MJCmld.js"></script>
+    <link rel="modulepreload" crossorigin href="/wooden-pose-walk/assets/boot-DS-dfV7x.js">
+    <link rel="stylesheet" crossorigin href="/wooden-pose-walk/assets/index-UNsFdWDe.css">
   </head>
   <body>
     <div id="app">
+      <div id="boot" class="boot">
+        <p class="boot-title">Wooden mannequin</p>
+        <p id="boot-status" class="boot-status">Loading the walk…</p>
+        <div class="boot-track" aria-hidden="true"><i id="boot-fill" class="boot-fill"></i></div>
+      </div>
       <canvas id="stage"></canvas>
+      <script>
+        window.setTimeout(function () {
+          if (document.body.dataset.booted) return;
+          var status = document.getElementById("boot-status");
+          if (status) {
+            status.textContent =
+              "Still working — first load pulls the figure, cloak, and lawn. Stay on this page.";
+          }
+        }, 8000);
+      </script>
       <p class="purse" id="purse" hidden>Purse <span id="purse-coins">0</span> coppers</p>
       <p class="hint" id="hint">Collect every find on the lawn · tap the grass to walk · posed limbs reset when he steps off</p>
       <div id="shop" class="shop" hidden>
