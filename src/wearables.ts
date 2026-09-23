@@ -230,7 +230,7 @@ const SPECS: WearSpec[] = [
     id: "jetpack",
     slot: "back",
     title: "jetpack",
-    found: "Found a jetpack — double-tap the sand to fly",
+    found: "Found a jetpack — tap the glowing window to fly through",
     lawn: new Vector3(SPOTS.jetpack.x, 0.14, SPOTS.jetpack.z),
     bone: "chest",
     wearPos: new Vector3(0, 0.36, -0.32),
