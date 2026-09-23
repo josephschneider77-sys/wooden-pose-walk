@@ -149,7 +149,7 @@ export function createRooftop(): Group {
   roofWindow.add(returnGlow);
 
   const returnPick = new Mesh(
-    new PlaneGeometry(3.2, 4.2),
+    new PlaneGeometry(4.6, 5.6),
     new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
   );
   returnPick.position.set(WINDOW_X + 0.04, 3.15, WINDOW_Z);

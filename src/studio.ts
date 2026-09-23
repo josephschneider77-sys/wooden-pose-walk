@@ -187,13 +187,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   const syncWindowLook = (): void => {
     if (windowsGone) return;
+    const pack = gear.isWorn("jetpack");
     const open = gear.allWorn();
-    rooms.windowFrame.visible = !open;
+    // The jetpack alone opens the passage. The rest of the finds only heat the glow.
+    rooms.windowFrame.visible = !pack;
     const glow = rooms.windowGlow.material as MeshBasicMaterial;
     if (open) {
       glow.color.setRGB(3.1, 2.7, 2.15);
       glow.transparent = false;
       glow.opacity = 1;
+    } else if (pack) {
+      glow.color.setRGB(2.4, 1.9, 1.15);
+      glow.transparent = true;
+      glow.opacity = 0.9;
     } else {
       glow.color.set("#e8c888");
       glow.transparent = true;
@@ -207,7 +213,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     syncWindowLook();
     showCollect();
     hint.textContent = gear.allWorn()
-      ? "Every find is on — tap the window when you want to fly through"
+      ? "Every find is on. Tap the glowing window to fly through."
       : found;
   };
 
@@ -563,6 +569,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const worldTarget = new Vector3();
   const cameraDir = new Vector3();
   const pointerState = { x: 0, y: 0, moved: false };
+  let armedWindow = false;
   let grab: Grab | null = null;
   let hover: LimbId | null = null;
   let presentDirect = false;
@@ -608,8 +615,13 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         !windowsGone &&
         pickWindow(raycaster, activeWindow())
       ) {
+        // Hold the press so a small drift does not become an orbit and eat the tap.
+        armedWindow = true;
+        event.preventDefault();
+        event.stopImmediatePropagation();
         return;
       }
+      armedWindow = false;
 
       const id = pickLimb(event);
       if (!id) return;
@@ -708,6 +720,13 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       return;
     }
 
+    const travel = Math.hypot(event.clientX - pointerState.x, event.clientY - pointerState.y);
+    if (armedWindow) {
+      armedWindow = false;
+      if (travel < 28) commitWindow();
+      return;
+    }
+
     if (pointerState.moved) return;
     setPointer(event);
     raycaster.setFromCamera(pointer, camera);
@@ -750,17 +769,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       return;
     }
     if ((world === "sand" || world === "roof") && !windowsGone && pickWindow(raycaster, activeWindow())) {
-      if (gear.isWorn("jetpack")) {
-        setDestination(walker, rooms.portalApproach, true, 2.55);
-        hint.textContent = "Flying through the window";
-      } else if (world === "roof") {
-        enterWorld("sand");
-      } else {
-        gear.walkTarget("jetpack", floorPoint);
-        floorPoint.y = 0;
-        goTo(floorPoint, false);
-        hint.textContent = "Walking to the jetpack — then tap the window";
-      }
+      commitWindow();
       return;
     }
     const reach =
@@ -801,11 +810,28 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   });
 
   canvas.addEventListener("pointercancel", (event) => {
+    armedWindow = false;
     if (grab && event.pointerId === grab.pointerId) {
       grab = null;
       controls.enabled = true;
     }
   });
+
+  function commitWindow(): void {
+    pendingGo = null;
+    if (gear.isWorn("jetpack")) {
+      enterWorld(world === "roof" ? "sand" : "roof");
+      return;
+    }
+    if (world === "roof") {
+      enterWorld("sand");
+      return;
+    }
+    gear.walkTarget("jetpack", floorPoint);
+    floorPoint.y = 0;
+    goTo(floorPoint, false);
+    hint.textContent = "Walking to the jetpack — then tap the window";
+  }
 
   const pipeline = createImagePipeline(renderer, scene, camera);
 
@@ -1202,7 +1228,9 @@ function pickWindow(raycaster: Raycaster, pane: Mesh): boolean {
 }
 
 function throughPortal(pos: Vector3): boolean {
-  return pos.x < PORTAL.x + 0.7 && Math.abs(pos.z - PORTAL.z) < PORTAL.halfW && pos.y > 0.4;
+  // The opening sits on the left wall. Crossing the near side of that wall,
+  // while airborne, is enough — the old plane was past where a room flight stops.
+  return pos.x < -6.4 && Math.abs(pos.z - PORTAL.z) < 2.6 && pos.y > 0.22;
 }
 
 function buildRooms(scene: Scene, sand: SandFloor): Rooms {
@@ -1246,7 +1274,7 @@ function buildRooms(scene: Scene, sand: SandFloor): Rooms {
   home.add(windowGlow);
 
   const windowPick = new Mesh(
-    new PlaneGeometry(3.2, 4.2),
+    new PlaneGeometry(4.6, 5.6),
     new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
   );
   windowPick.position.set(PORTAL.x + 0.04, PORTAL.y, PORTAL.z);
