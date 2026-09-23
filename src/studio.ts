@@ -23,7 +23,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { Bazaar, disposeTree, STALL_FRONT } from "./bazaar";
+import { Bazaar, disposeTree, GATE_POS, STALL_FRONT } from "./bazaar";
 import { BEACH_SPAWN, Beach } from "./beach";
 import { ClothCape } from "./cape";
 import { attachRealisticFace } from "./face";
@@ -267,10 +267,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     purseEl.hidden = world !== "bazaar";
   };
 
+  const glanceAtDoors = (): void => {
+    figure.worldPos("chest", follow);
+    follow.y += 0.08;
+    controls.target.copy(follow);
+    camera.position.set(follow.x + 0.2, follow.y + 0.72, follow.z + 3.15);
+    controls.update();
+  };
+
   const shop = bindShop(shopRoot, gear, purse, (message) => {
     syncHat();
     syncPurse();
     hint.textContent = message;
+    if (message.startsWith("The brass lantern")) glanceAtDoors();
   });
 
   const paintLook = (): void => {
@@ -512,13 +521,18 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     const down =
       world === "roof" && rooms.stairs.open && point.distanceTo(rooms.stairs.walkIn) < 0.35;
     const stall = world === "bazaar" && point.distanceTo(STALL_FRONT) < 0.35;
+    const toDoors = world === "bazaar" && Math.hypot(point.x - GATE_POS.x, point.z - GATE_POS.z) < 3.2;
     hint.textContent = canFly
       ? "Flying there"
       : down
         ? "Walking down the stairwell"
         : stall
           ? "Walking to the merchant"
-          : "Walking there";
+          : toDoors
+            ? bazaar?.gateOpen
+              ? "Walking through the stone doors"
+              : "Walking to the sealed stone doors"
+            : "Walking there";
   };
 
   if (params.has("beach")) enterBeach();
@@ -675,8 +689,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       (world === "sand" || world === "roof") && !windowsGone && pickWindow(raycaster, activeWindow());
     const onMelons = world === "roof" && !upperCleared && rooms.melons.hit(raycaster);
     const onMerchant = world === "bazaar" && !!bazaar?.hit(raycaster);
+    const onGate = world === "bazaar" && !!bazaar?.hitGate(raycaster);
     const onLamp = world === "vault" && !!bazaar?.lampApproach(raycaster, floorPoint);
-    canvas.style.cursor = hover || wearHover || onWindow || onMelons || onMerchant || onLamp ? "pointer" : "";
+    canvas.style.cursor = hover || wearHover || onWindow || onMelons || onMerchant || onGate || onLamp ? "pointer" : "";
     if (hover) canvas.style.cursor = "grab";
     if (grab) return;
     if (hover) hint.textContent = `Drag the ${limbLabel(hover)} to pose it`;
@@ -690,13 +705,9 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     } else if (onWindow) hint.textContent = "The jetpack is on the sand — walk to it, then tap the window";
     else if (onLamp) hint.textContent = "Tap a vault light — walk close and it goes out";
     else if (onMerchant) hint.textContent = "Tap the twin — he will buy what you wear and sell a lantern";
-    else if (world === "bazaar" && gear.isWorn("lantern") && bazaar?.nearGate(figure.root.position.x, figure.root.position.z)) {
-      hint.textContent = "Hold the lantern to the moth-gate";
-    } else if (world === "bazaar") {
-      hint.textContent = gear.isWorn("lantern")
-        ? "Walk the lantern to the sealed arch at the far end"
-        : "Sell worn finds to the twin, then buy his brass lantern";
-    } else if (world === "vault") {
+    else if (onGate && bazaar) hint.textContent = bazaar.hoverHint(gear.isWorn("lantern"));
+    else if (world === "bazaar" && bazaar) hint.textContent = bazaar.idleHint(gear.isWorn("lantern"));
+    else if (world === "vault") {
       hint.textContent = bazaar
         ? `${bazaar.remainingLamps()} vault lights still burn — walk to each`
         : "Walk to each vault light";
@@ -762,6 +773,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       }
       return;
     }
+    if (world === "bazaar" && bazaar?.hitGate(raycaster)) {
+      bazaar.gateWalkTarget(floorPoint);
+      goTo(floorPoint, false);
+      return;
+    }
     if (world === "roof" && !upperCleared && rooms.melons.hit(raycaster)) {
       hint.textContent =
         rooms.melons.takeKnife(gear) ??
@@ -787,9 +803,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         world === "roof" && rooms.stairs.open ? rooms.stairs : null,
       )
     ) {
-      const pad = world === "roof" ? 10 : world === "beach" ? 12 : world === "vault" ? 7.4 : world === "bazaar" ? 5.6 : ROOM;
+      const pad = world === "roof" ? 10 : world === "beach" ? 12 : world === "vault" ? 7.4 : world === "bazaar" ? 5.7 : ROOM;
       floorPoint.x = clamp(floorPoint.x, -pad, pad);
-      floorPoint.z = clamp(floorPoint.z, -pad, pad);
+      const zFar = world === "bazaar" && bazaar?.gateOpen ? 7.75 : pad;
+      floorPoint.z = clamp(floorPoint.z, -zFar, pad);
       if (world === "roof" && rooms.stairs.open && rooms.stairs.inPit(floorPoint.x, floorPoint.z)) {
         floorPoint.copy(rooms.stairs.walkIn);
       }
@@ -1035,10 +1052,20 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (world === "bazaar" && bazaar) {
       bazaar.poseMerchant(time);
       figure.worldPos("chest", holdWorld);
+      const wornLantern = gear.isWorn("lantern");
       const wasShut = !bazaar.gateOpen;
-      bazaar.feedLantern(holdWorld, gear.isWorn("lantern"));
-      if (wasShut && bazaar.gateOpen) {
-        hint.textContent = "The moth-gate split. Walk through — there is no way back.";
+      bazaar.feedLantern(holdWorld, wornLantern, budget, time);
+      const guide = bazaar.idleHint(wornLantern);
+      const current = hint.textContent ?? "";
+      const aboutDoors =
+        current.startsWith("The moths") ||
+        current.startsWith("Doors opening") ||
+        current.startsWith("The stone doors") ||
+        current.startsWith("Walking through") ||
+        current.startsWith("Walking to the sealed") ||
+        current.startsWith("The brass lantern");
+      if (bazaar.charging || (wasShut && bazaar.gateOpen) || (bazaar.gateOpen && aboutDoors)) {
+        hint.textContent = guide;
       }
       if (wall - lastPortal > 0.8 && bazaar.throughGate(figure.root.position.x, figure.root.position.z)) {
         enterVault();

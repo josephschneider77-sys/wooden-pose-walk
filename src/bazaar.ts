@@ -37,11 +37,20 @@ export class Bazaar {
   readonly merchant: WoodenMannequin;
   readonly stallPick: Mesh[] = [];
   gateOpen = false;
+  /** Standing in range with the lantern on, before the doors finish opening. */
+  charging = false;
   private readonly leftDoor: Mesh;
   private readonly rightDoor: Mesh;
+  private readonly doorMat: MeshPhysicalMaterial;
+  private readonly lintelMat: MeshPhysicalMaterial;
+  private readonly seam: Mesh;
+  private readonly dust = new Group();
+  private readonly gateLight: PointLight;
+  private readonly gatePick: Mesh;
   private readonly moths = new Group();
   private readonly lanternGlow: PointLight;
   private unlock = 0;
+  private doorT = 0;
   private readonly lamps: VaultLamp[] = [];
   private vaultAmbient = new AmbientLight("#ffe8c4", 0.78);
   private hunt: VaultLamp | null = null;
@@ -94,14 +103,56 @@ export class Bazaar {
     };
     post(-1.55);
     post(1.55);
-    const lintel = new Mesh(new BoxGeometry(3.6, 0.38, 0.4), STONE);
+    this.lintelMat = new MeshPhysicalMaterial({
+      color: "#5a4c42",
+      roughness: 0.84,
+      emissive: "#ffb15a",
+      emissiveIntensity: 0,
+    });
+    this.doorMat = new MeshPhysicalMaterial({
+      color: "#5a4c42",
+      roughness: 0.88,
+      emissive: "#ff9a3c",
+      emissiveIntensity: 0,
+    });
+    const lintel = new Mesh(new BoxGeometry(3.6, 0.38, 0.4), this.lintelMat);
     lintel.position.set(0, 2.95, -7.15);
     this.root.add(lintel);
-    this.leftDoor = new Mesh(new BoxGeometry(1.15, 2.35, 0.12), STONE);
-    this.rightDoor = this.leftDoor.clone();
+    this.leftDoor = new Mesh(new BoxGeometry(1.15, 2.35, 0.12), this.doorMat);
+    this.rightDoor = new Mesh(new BoxGeometry(1.15, 2.35, 0.12), this.doorMat);
     this.leftDoor.position.set(-0.58, 1.15, -7.05);
     this.rightDoor.position.set(0.58, 1.15, -7.05);
     this.root.add(this.leftDoor, this.rightDoor);
+
+    this.seam = new Mesh(
+      new BoxGeometry(0.07, 2.15, 0.05),
+      new MeshBasicMaterial({ color: new Color(3.6, 2.1, 0.85) }),
+    );
+    this.seam.position.set(0, 1.18, -6.9);
+    this.seam.visible = false;
+    this.root.add(this.seam);
+
+    this.dust.visible = false;
+    for (let i = 0; i < 18; i++) {
+      const mote = new Mesh(
+        new SphereGeometry(0.04, 6, 5),
+        new MeshBasicMaterial({ color: new Color(3.8, 2.5, 1.15) }),
+      );
+      this.dust.add(mote);
+    }
+    this.root.add(this.dust);
+
+    this.gateLight = new PointLight("#ffb060", 0, 11, 1.35);
+    this.gateLight.position.set(0, 2.15, -6.35);
+    this.root.add(this.gateLight);
+
+    this.gatePick = new Mesh(
+      new BoxGeometry(2.6, 2.8, 1.1),
+      new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    this.gatePick.position.set(0, 1.35, -6.85);
+    this.gatePick.name = "gatePick";
+    this.root.add(this.gatePick);
 
     this.moths.visible = false;
     for (let i = 0; i < 14; i++) {
@@ -254,31 +305,85 @@ export class Bazaar {
   nearGate(x: number, z: number): boolean {
     const dx = x - GATE_POS.x;
     const dz = z - GATE_POS.z;
-    return dx * dx + dz * dz < 1.7 * 1.7;
+    return dx * dx + dz * dz < 2 * 2;
   }
 
   throughGate(x: number, z: number): boolean {
     return this.gateOpen && z < -7.35 && Math.abs(x) < 1.15;
   }
 
-  feedLantern(world: Vector3, worn: boolean): void {
+  hitGate(raycaster: Raycaster): boolean {
+    if (!this.root.visible) return false;
+    return raycaster.intersectObject(this.gatePick, false).length > 0;
+  }
+
+  /** Where a tap on the doors should walk. In front while shut, past the sill once open. */
+  gateWalkTarget(out: Vector3): Vector3 {
+    return out.set(0, 0, this.gateOpen ? -7.55 : -5.7);
+  }
+
+  idleHint(worn: boolean): string {
+    if (this.gateOpen && this.doorT < 0.82) return "Doors opening — walk through.";
+    if (this.gateOpen) return "The stone doors are open. Walk through into the vault.";
+    if (!worn) return "Sell worn finds to the twin, then buy his brass lantern.";
+    if (this.charging || this.unlock > 0) {
+      return this.unlock < 0.45 ? "The moths wake to the lantern…" : "Doors opening — walk through.";
+    }
+    return "Walk to the sealed stone doors at the far end of the hall.";
+  }
+
+  hoverHint(worn: boolean): string {
+    if (this.gateOpen) return "Tap the open doors and walk through into the vault.";
+    if (!worn) return "The sealed stone doors. They open for a brass lantern.";
+    return "Tap the glowing doors and walk the lantern up to them.";
+  }
+
+  feedLantern(world: Vector3, worn: boolean, dt: number, time: number): void {
     this.lanternGlow.position.copy(world);
     this.lanternGlow.intensity = worn ? 1.8 : 0;
-    if (worn && this.nearGate(world.x, world.z) && !this.gateOpen) {
-      this.unlock = Math.min(1, this.unlock + 0.02);
+    this.charging = worn && !this.gateOpen && this.nearGate(world.x, world.z);
+    if (this.charging) {
+      // About the same pace as the old per-frame step at 60fps.
+      this.unlock = Math.min(1, this.unlock + dt * 1.2);
       this.moths.visible = true;
       this.moths.children.forEach((moth, i) => {
-        moth.position.y = 0.75 + Math.sin(performance.now() / 400 + i) * 0.12 + i * 0.08;
+        moth.position.y = 0.75 + Math.sin(time * 2.5 + i) * 0.12 + (i % 5) * 0.16;
+        moth.position.x = ((i % 7) - 3) * 0.22 + Math.sin(time * 1.4 + i) * 0.08;
       });
       if (this.unlock >= 1) this.openGate();
     }
+    const step = Math.min(0.18, Math.max(0, dt) * 0.65);
+    this.doorT = this.gateOpen ? Math.min(1, this.doorT + step) : Math.max(0, this.doorT - step);
+    this.leftDoor.position.x = -0.58 - this.doorT * 0.97;
+    this.rightDoor.position.x = 0.58 + this.doorT * 0.97;
+    this.lightGoal(worn, time);
   }
 
   openGate(): void {
     this.gateOpen = true;
+    this.charging = false;
     this.moths.visible = true;
-    this.leftDoor.position.x = -1.55;
-    this.rightDoor.position.x = 1.55;
+  }
+
+  private lightGoal(worn: boolean, time: number): void {
+    const goal = worn && this.doorT < 0.98;
+    const pulse = 0.5 + Math.sin(time * 2.6) * 0.5;
+    this.doorMat.emissiveIntensity = goal ? 0.7 + pulse * 0.45 : 0;
+    this.doorMat.color.set(goal ? "#8d6844" : "#5a4c42");
+    this.lintelMat.emissiveIntensity = goal ? 1.05 + pulse * 0.55 : 0;
+    this.lintelMat.color.set(goal ? "#a07a4c" : "#5a4c42");
+    this.gateLight.intensity = goal ? 4.2 + pulse * 1.4 : this.gateOpen ? 1.6 : 0;
+    this.seam.visible = worn && !this.gateOpen;
+    this.dust.visible = worn && this.doorT < 0.98;
+    if (!this.dust.visible) return;
+    this.dust.children.forEach((mote, i) => {
+      const wing = i / 18;
+      mote.position.set(
+        Math.sin(time * 0.65 + wing * 6.2) * 1.2,
+        1.15 + ((i % 6) * 0.28) + Math.sin(time * 1.5 + i) * 0.12,
+        -6.55 + Math.cos(time * 0.5 + i) * 0.18,
+      );
+    });
   }
 
   remainingLamps(): number {
