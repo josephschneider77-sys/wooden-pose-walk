@@ -60,6 +60,7 @@ export function bindShop(
       const got = wardrobe.buyLantern();
       if (!got) return;
       purse.coins -= LANTERN_COST;
+      close();
       onChange(got);
       render();
     });

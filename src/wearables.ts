@@ -242,7 +242,7 @@ const SPECS: WearSpec[] = [
     id: "lantern",
     slot: "lamp",
     title: "brass lantern",
-    found: "The brass lantern is yours — walk it to the moth-gate",
+    found: "The brass lantern is yours. Walk to the sealed stone doors at the far end of the hall.",
     lawn: new Vector3(0, 0, 0),
     bone: "chest",
     wearPos: new Vector3(0.18, 0.02, 0.14),
