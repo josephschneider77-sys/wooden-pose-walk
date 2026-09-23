@@ -1,12 +1,16 @@
 import {
   BufferAttribute,
   CanvasTexture,
+  InstancedMesh,
   LinearMipmapLinearFilter,
   Mesh,
   MeshPhysicalMaterial,
+  MeshStandardMaterial,
   NoColorSpace,
+  Object3D,
   PlaneGeometry,
   RepeatWrapping,
+  SphereGeometry,
   SRGBColorSpace,
 } from "three";
 import { debugMode, graphicsTier } from "./quality";
@@ -15,8 +19,9 @@ import { debugMode, graphicsTier } from "./quality";
  * Level-1 sand floor. Grain families, voronoi shape, and roughness follow
  * the deformable-sand skill (MIT, © 2026 Scott Sun). The gallery's WebGPU
  * heightfield (512², airborne grains, wave reset) is too heavy for this
- * walkable room, so this tier bakes the grain PBR and runs a CPU repose
- * heightfield that footprints can push.
+ * walkable room. This tier bakes the grain PBR and runs the skill's contact
+ * stroke on a CPU heightfield: feet and the walking path excavate, push a
+ * berm down-slope at the dynamic repose angle, and kick a few grains.
  *
  * Grain pitch is enlarged to about 6 mm so the mineral speckle still reads
  * from the orbit camera. The GPL coconut-tree gallery asset is not included.
@@ -24,12 +29,18 @@ import { debugMode, graphicsTier } from "./quality";
 const TILE = 0.32;
 const GRAINS = 48;
 const REPOSE = 0.625;
+const DYNAMIC_REPOSE = 0.48;
 const SIZE = 18;
 
-export interface FootPlant {
+/** A foot or body segment dragging through the sand, in the skill's stroke form. */
+export interface SandStroke {
   x: number;
   z: number;
-  planted: boolean;
+  px: number;
+  pz: number;
+  /** 0 hides the stroke. 1 is a planted foot. */
+  pressure: number;
+  radius: number;
 }
 
 function hash2(ix: number, iy: number): [number, number] {
@@ -275,13 +286,27 @@ export class SandFloor {
   private readonly segments: number;
   private readonly base: Float32Array;
   private readonly dynamic: Float32Array;
-  private readonly wasPlanted: boolean[] = [];
   private settle = 0;
   private readonly heightDebug: boolean;
+  private readonly carveDepth: number;
+  private readonly sweeps: number;
+  private readonly grains: InstancedMesh;
+  private readonly grainPos: Float32Array;
+  private readonly grainVel: Float32Array;
+  private readonly grainLife: Float32Array;
+  private readonly dummy = new Object3D();
+  private dirty = false;
+  private minX = 0;
+  private maxX = 0;
+  private minZ = 0;
+  private maxZ = 0;
+  private emits = 0;
 
   constructor() {
     const tier = graphicsTier();
     this.segments = tier === "mobile" ? 110 : 180;
+    this.carveDepth = tier === "mobile" ? 0.1 : 0.12;
+    this.sweeps = tier === "mobile" ? 2 : 4;
     this.heightDebug = debugMode("sand") === "height";
     const grid = this.segments + 1;
     this.base = new Float32Array(grid * grid);
@@ -310,18 +335,30 @@ export class SandFloor {
       roughness: 1,
       metalness: 0,
       envMapIntensity: 0.42,
-      vertexColors: this.heightDebug,
+      vertexColors: true,
     });
-    if (this.heightDebug) {
-      geometry.setAttribute("color", new BufferAttribute(new Float32Array(grid * grid * 3), 3));
-    }
+    geometry.setAttribute("color", new BufferAttribute(new Float32Array(grid * grid * 3).fill(1), 3));
     this.mesh = new Mesh(geometry, material);
     this.mesh.name = "level-1-sand";
     this.mesh.receiveShadow = true;
     const uv = geometry.getAttribute("uv");
     if (uv) geometry.setAttribute("uv2", uv.clone());
+    const grainCount = tier === "mobile" ? 20 : 48;
+    this.grainPos = new Float32Array(grainCount * 3);
+    this.grainVel = new Float32Array(grainCount * 3);
+    this.grainLife = new Float32Array(grainCount);
+    this.grains = new InstancedMesh(
+      new SphereGeometry(0.042, 6, 5),
+      new MeshStandardMaterial({ color: "#e2c48a", roughness: 0.72, metalness: 0 }),
+      grainCount,
+    );
+    this.grains.name = "sand-grains";
+    this.grains.frustumCulled = false;
+    this.grains.castShadow = false;
+    this.mesh.add(this.grains);
     this.writeHeights();
     geometry.computeTangents();
+    this.integrateGrains(0);
   }
 
   heightAt(x: number, z: number): number {
@@ -343,35 +380,69 @@ export class SandFloor {
     return a * (1 - tz) + b * tz;
   }
 
-  /** Planted feet leave a shallow print and a berm that slumps at the repose angle. */
-  step(feet: readonly FootPlant[]): void {
-    let stamped = false;
-    for (let i = 0; i < feet.length; i++) {
-      const foot = feet[i]!;
-      if (foot.planted && !this.wasPlanted[i]) {
-        this.stamp(foot.x, foot.z, 0.09, 0.012);
-        stamped = true;
-      }
-      this.wasPlanted[i] = foot.planted;
+  /**
+   * Drag each stroke through the heightfield. Material leaves the contact
+   * and slumps at the skill's dynamic repose while the trail is fresh.
+   */
+  step(strokes: readonly SandStroke[], dt: number): void {
+    this.emits = 0;
+    let carved = false;
+    for (const stroke of strokes) {
+      if (stroke.pressure <= 0.02) continue;
+      if (this.carve(stroke)) carved = true;
     }
-    if (stamped) this.settle = 10;
-    if (this.settle > 0) {
-      this.repose();
+    if (carved) this.settle = this.sweeps + 4;
+    if (this.settle > 0 && this.dirty) {
+      const limit = (this.settle > 2 ? DYNAMIC_REPOSE : REPOSE) * (SIZE / this.segments);
+      for (let sweep = 0; sweep < this.sweeps; sweep++) this.repose(limit);
       this.settle -= 1;
       this.writeHeights();
     }
+    this.integrateGrains(dt);
   }
 
-  private stamp(x: number, z: number, radius: number, depth: number): void {
+  private carve(stroke: SandStroke): boolean {
+    const dist = Math.hypot(stroke.x - stroke.px, stroke.z - stroke.pz);
+    const cell = SIZE / this.segments;
+    const samples = Math.max(1, Math.ceil(dist / (cell * 0.55)));
+    const dirx = dist > 1e-4 ? (stroke.x - stroke.px) / dist : 0;
+    const dirz = dist > 1e-4 ? (stroke.z - stroke.pz) / dist : 1;
+    const moving = dist > cell * 0.25;
+    let any = false;
+    for (let sample = 0; sample <= samples; sample++) {
+      const t = sample / samples;
+      const x = stroke.px + (stroke.x - stroke.px) * t;
+      const z = stroke.pz + (stroke.z - stroke.pz) * t;
+      if (this.stamp(x, z, stroke.radius, this.carveDepth * stroke.pressure, moving ? dirx : 0, moving ? dirz : 0)) {
+        any = true;
+        if (this.emits < 8 && moving && sample % 2 === 0) {
+          this.emitGrain(x, z, dirx, dirz);
+          this.emits += 1;
+        }
+      }
+    }
+    return any;
+  }
+
+  private stamp(
+    x: number,
+    z: number,
+    radius: number,
+    depth: number,
+    dirx: number,
+    dirz: number,
+  ): boolean {
     const grid = this.segments + 1;
     const half = SIZE / 2;
     const cell = SIZE / this.segments;
-    const minX = Math.max(0, Math.floor((x - radius * 1.45 + half) / cell));
-    const maxX = Math.min(this.segments, Math.ceil((x + radius * 1.45 + half) / cell));
-    const minZ = Math.max(0, Math.floor((z - radius * 1.45 + half) / cell));
-    const maxZ = Math.min(this.segments, Math.ceil((z + radius * 1.45 + half) / cell));
+    const reach = radius * 1.7;
+    const minX = Math.max(0, Math.floor((x - reach + half) / cell));
+    const maxX = Math.min(this.segments, Math.ceil((x + reach + half) / cell));
+    const minZ = Math.max(0, Math.floor((z - reach + half) / cell));
+    const maxZ = Math.min(this.segments, Math.ceil((z + reach + half) / cell));
     let removed = 0;
     let rim = 0;
+    const directed = Math.hypot(dirx, dirz) > 0.5;
     for (let iz = minZ; iz <= maxZ; iz++) {
       for (let ix = minX; ix <= maxX; ix++) {
         const wx = -half + ix * cell;
@@ -379,39 +450,64 @@ export class SandFloor {
         const d = Math.hypot(wx - x, wz - z) / radius;
         const i = iz * grid + ix;
         if (d < 1) {
-          const fall = (1 - d * d) * (1 - d * 0.25);
+          const fall = (1 - d * d) * (1 - d * 0.2);
           const before = this.dynamic[i] ?? 0;
-          const next = Math.max(-0.028, before - depth * fall);
+          const next = Math.max(-0.16, before - depth * fall);
           this.dynamic[i] = next;
           removed += before - next;
-        } else if (d < 1.4) {
-          rim += 1;
+          this.mark(ix, iz);
+        } else if (d < 1.65) {
+          const ox = (wx - x) / radius;
+          const oz = (wz - z) / radius;
+          const forward = directed ? ox * dirx + oz * dirz : 0.35;
+          if (!directed || forward > -0.15) rim += 1;
         }
       }
     }
-    if (rim <= 0 || removed <= 0) return;
+    if (rim <= 0 || removed <= 0) return removed > 0;
     const share = removed / rim;
     for (let iz = minZ; iz <= maxZ; iz++) {
       for (let ix = minX; ix <= maxX; ix++) {
         const wx = -half + ix * cell;
         const wz = -half + iz * cell;
         const d = Math.hypot(wx - x, wz - z) / radius;
-        if (d >= 1 && d < 1.4) {
-          const i = iz * grid + ix;
-          const ring = 1 - Math.abs(d - 1.2) / 0.2;
-          this.dynamic[i] = Math.min(0.02, (this.dynamic[i] ?? 0) + share * Math.max(ring, 0.25));
-        }
+        if (d < 1 || d >= 1.65) continue;
+        const ox = (wx - x) / radius;
+        const oz = (wz - z) / radius;
+        const forward = directed ? ox * dirx + oz * dirz : 0.35;
+        if (directed && forward <= -0.15) continue;
+        const i = iz * grid + ix;
+        const ring = Math.max(0.2, 1 - Math.abs(d - 1.25) / 0.4) * Math.max(forward, 0.35);
+        this.dynamic[i] = Math.min(0.08, (this.dynamic[i] ?? 0) + share * ring);
+        this.mark(ix, iz);
       }
     }
+    return true;
   }
 
-  private repose(): void {
+  private mark(ix: number, iz: number): void {
+    if (!this.dirty) {
+      this.minX = this.maxX = ix;
+      this.minZ = this.maxZ = iz;
+      this.dirty = true;
+      return;
+    }
+    this.minX = Math.min(this.minX, ix);
+    this.maxX = Math.max(this.maxX, ix);
+    this.minZ = Math.min(this.minZ, iz);
+    this.maxZ = Math.max(this.maxZ, iz);
+  }
+
+  /** Flux across the disturbed patch. Excess height above the repose slope moves downhill. */
+  private repose(limit: number): void {
     const grid = this.segments + 1;
-    const cell = SIZE / this.segments;
-    const limit = REPOSE * cell;
     const height = (i: number): number => (this.base[i] ?? 0) + (this.dynamic[i] ?? 0);
-    for (let iz = 0; iz < this.segments; iz++) {
-      for (let ix = 0; ix < this.segments; ix++) {
+    const x0 = Math.max(0, this.minX - 1);
+    const x1 = Math.min(this.segments - 1, this.maxX + 1);
+    const z0 = Math.max(0, this.minZ - 1);
+    const z1 = Math.min(this.segments - 1, this.maxZ + 1);
+    for (let iz = z0; iz <= z1; iz++) {
+      for (let ix = x0; ix <= x1; ix++) {
         const i = iz * grid + ix;
         const h = height(i);
         for (const [jx, jz] of [
@@ -421,17 +517,78 @@ export class SandFloor {
           const j = jz * grid + jx;
           const diff = h - height(j);
           if (diff > limit) {
-            const transfer = (diff - limit) * 0.25;
+            const transfer = (diff - limit) * 0.35;
             this.dynamic[i] = (this.dynamic[i] ?? 0) - transfer;
             this.dynamic[j] = (this.dynamic[j] ?? 0) + transfer;
           } else if (-diff > limit) {
-            const transfer = (-diff - limit) * 0.25;
+            const transfer = (-diff - limit) * 0.35;
             this.dynamic[i] = (this.dynamic[i] ?? 0) + transfer;
             this.dynamic[j] = (this.dynamic[j] ?? 0) - transfer;
           }
         }
       }
     }
+    this.minX = x0;
+    this.maxX = Math.min(this.segments, x1 + 1);
+    this.minZ = z0;
+    this.maxZ = Math.min(this.segments, z1 + 1);
+  }
+
+  private emitGrain(x: number, z: number, dirx: number, dirz: number): void {
+    let slot = -1;
+    for (let i = 0; i < this.grainLife.length; i++) {
+      if ((this.grainLife[i] ?? 0) <= 0) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0) return;
+    const i3 = slot * 3;
+    this.grainPos[i3] = x;
+    this.grainPos[i3 + 1] = this.heightAt(x, z) + 0.04;
+    this.grainPos[i3 + 2] = z;
+    this.grainVel[i3] = dirx * 1.15 + (Math.random() - 0.5) * 0.7;
+    this.grainVel[i3 + 1] = 1.6 + Math.random() * 0.9;
+    this.grainVel[i3 + 2] = dirz * 1.15 + (Math.random() - 0.5) * 0.7;
+    this.grainLife[slot] = 0.62 + Math.random() * 0.2;
+  }
+
+  private integrateGrains(dt: number): void {
+    const dummy = this.dummy;
+    for (let i = 0; i < this.grainLife.length; i++) {
+      let life = this.grainLife[i] ?? 0;
+      const i3 = i * 3;
+      if (life <= 0 || dt <= 0) {
+        dummy.position.set(0, -8, 0);
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        this.grains.setMatrixAt(i, dummy.matrix);
+        continue;
+      }
+      life = Math.max(0, life - dt);
+      const vy = (this.grainVel[i3 + 1] ?? 0) - 9.4 * dt;
+      this.grainVel[i3 + 1] = vy;
+      const x = (this.grainPos[i3] ?? 0) + (this.grainVel[i3] ?? 0) * dt;
+      let y = (this.grainPos[i3 + 1] ?? 0) + vy * dt;
+      const z = (this.grainPos[i3 + 2] ?? 0) + (this.grainVel[i3 + 2] ?? 0) * dt;
+      const ground = this.heightAt(x, z) + 0.016;
+      if (y < ground) {
+        y = ground;
+        this.grainVel[i3 + 1] = Math.abs(vy) * 0.25;
+        this.grainVel[i3] = (this.grainVel[i3] ?? 0) * 0.55;
+        this.grainVel[i3 + 2] = (this.grainVel[i3 + 2] ?? 0) * 0.55;
+        if ((this.grainVel[i3 + 1] ?? 0) < 0.4) life = Math.min(life, 0.1);
+      }
+      this.grainLife[i] = life;
+      this.grainPos[i3] = x;
+      this.grainPos[i3 + 1] = y;
+      this.grainPos[i3 + 2] = z;
+      dummy.position.set(x, y, z);
+      dummy.scale.setScalar(0.35 + Math.min(1, life) * 0.85);
+      dummy.updateMatrix();
+      this.grains.setMatrixAt(i, dummy.matrix);
+    }
+    this.grains.instanceMatrix.needsUpdate = true;
   }
 
   private writeHeights(): void {
@@ -441,11 +598,16 @@ export class SandFloor {
     const color = geometry.getAttribute("color");
     if (!pos) return;
     for (let i = 0; i < pos.count; i++) {
-      const y = (this.base[i] ?? 0) + (this.dynamic[i] ?? 0);
+      const dynamic = this.dynamic[i] ?? 0;
+      const y = (this.base[i] ?? 0) + dynamic;
       pos.setY(i, y);
-      if (color && this.heightDebug) {
-        const t = Math.min(1, Math.max(0, (y + 0.028) / 0.05));
+      if (!color) continue;
+      if (this.heightDebug) {
+        const t = Math.min(1, Math.max(0, (y + 0.09) / 0.15));
         color.setXYZ(i, t, t * t, 1 - t);
+      } else {
+        const shade = Math.min(1.35, Math.max(0.22, 1 + dynamic * 16));
+        color.setXYZ(i, shade, shade, shade);
       }
     }
     pos.needsUpdate = true;

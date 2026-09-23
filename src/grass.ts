@@ -30,11 +30,7 @@ function configureMap(
   texture.colorSpace = color ? SRGBColorSpace : NoColorSpace;
 }
 
-/**
- * Lawn kept for a later level. Level 1 / the default ground is the sand
- * floor in `sandFloor.ts`, so this mesh is not added to the studio scene.
- */
-/** Top-down lawn using ambientCG Grass001 (CC0). */
+/** Top-down lawn using ambientCG Grass001 (CC0). Level 2 adds this after the toys are collected. */
 export function createGrassGround(): Mesh {
   const repeat = 12;
   const loader = new TextureLoader();

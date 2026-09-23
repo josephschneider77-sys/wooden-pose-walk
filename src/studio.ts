@@ -46,7 +46,10 @@ import {
 import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createImagePipeline } from "./pipeline";
-import { debugMode } from "./quality";
+import { ToyShelf } from "./collectibles";
+import { createGrassBlades, createGrassGround } from "./grass";
+import { debugMode, graphicsTier } from "./quality";
+import type { SandStroke } from "./sandFloor";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
 const ROOM = 8.4;
@@ -65,6 +68,7 @@ interface Grab {
 
 export function startStudio(canvas: HTMLCanvasElement): void {
   const hint = document.querySelector("#hint") as HTMLParagraphElement;
+  const collectHud = document.querySelector("#collect");
 
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -95,7 +99,28 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   controls.target.set(0, 0.95, 0);
 
   const sand = new SandFloor();
+  const toys = new ToyShelf(sand);
+  scene.add(toys.group);
+  let onLawn = false;
   const key = buildRoom(scene, sand);
+  const showCollect = (): void => {
+    if (collectHud instanceof HTMLElement) collectHud.textContent = toys.label();
+  };
+  showCollect();
+  const enterLawn = (): void => {
+    if (onLawn) return;
+    onLawn = true;
+    sand.mesh.visible = false;
+    toys.group.visible = false;
+    const tier = graphicsTier();
+    scene.add(createGrassGround());
+    const blades = createGrassBlades(tier === "mobile" ? 900 : 2400, 8.5);
+    blades.castShadow = false;
+    blades.receiveShadow = false;
+    scene.add(blades);
+    showCollect();
+    hint.textContent = "Level 2 — the lawn";
+  };
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
@@ -242,8 +267,12 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       floorPoint.x = clamp(floorPoint.x, -ROOM, ROOM);
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
       floorPoint.y = 0;
+      if (!onLawn && toys.collectNear(floorPoint.x, floorPoint.z, 1.05)) {
+        showCollect();
+        if (toys.remaining === 0) enterLawn();
+      }
       setDestination(walker, floorPoint);
-      hint.textContent = "Walking there";
+      if (!onLawn) hint.textContent = "Walking there";
     }
   });
 
@@ -268,12 +297,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const rightToe = new Vector3();
   const leftHeel = new Vector3();
   const rightHeel = new Vector3();
-  const plants = [
-    { x: 0, z: 0, planted: false },
-    { x: 0, z: 0, planted: false },
-    { x: 0, z: 0, planted: false },
-    { x: 0, z: 0, planted: false },
+  const strokes: SandStroke[] = [
+    { x: 0, z: 0, px: 0, pz: 0, pressure: 0, radius: 0.24 },
+    { x: 0, z: 0, px: 0, pz: 0, pressure: 0, radius: 0.2 },
+    { x: 0, z: 0, px: 0, pz: 0, pressure: 0, radius: 0.24 },
+    { x: 0, z: 0, px: 0, pz: 0, pressure: 0, radius: 0.2 },
+    { x: 0, z: 0, px: 0, pz: 0, pressure: 0, radius: 0.46 },
   ];
+  const strokePrev = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  let strokeReady = false;
   const holdWorld = new Vector3();
   // Seed from the animation clock, not performance.now(). Those clocks disagree
   // after a long startup, and a negative step sends the camera under the sand.
@@ -399,25 +431,58 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       highlight.visible = false;
     }
 
-    cape.update(dt, time, walker.speed, walker.yaw, (x, z) => sand.heightAt(x, z));
+    cape.update(dt, time, walker.speed, walker.yaw, (x, z) => (onLawn ? 0 : sand.heightAt(x, z)));
     hat.update(dt, time, camera, walker.speed, walker.yaw);
     figure.worldPos("leftHeel", leftHeel);
+    figure.worldPos("leftToe", leftToe);
     figure.worldPos("rightHeel", rightHeel);
+    figure.worldPos("rightToe", rightToe);
     const leftPlanted = contacts.leftContact && !holds.has("leftLeg");
     const rightPlanted = contacts.rightContact && !holds.has("rightLeg");
-    plants[0]!.x = leftHeel.x;
-    plants[0]!.z = leftHeel.z;
-    plants[0]!.planted = leftPlanted;
-    plants[1]!.x = leftTarget.x;
-    plants[1]!.z = leftTarget.z;
-    plants[1]!.planted = leftPlanted;
-    plants[2]!.x = rightHeel.x;
-    plants[2]!.z = rightHeel.z;
-    plants[2]!.planted = rightPlanted;
-    plants[3]!.x = rightTarget.x;
-    plants[3]!.z = rightTarget.z;
-    plants[3]!.planted = rightPlanted;
-    sand.step(plants);
+    const trail = [
+      leftHeel.x,
+      leftHeel.z,
+      leftToe.x,
+      leftToe.z,
+      rightHeel.x,
+      rightHeel.z,
+      rightToe.x,
+      rightToe.z,
+      figure.root.position.x,
+      figure.root.position.z,
+    ];
+    const pressures = [
+      leftPlanted ? 1 : 0,
+      leftPlanted ? 0.85 : 0,
+      rightPlanted ? 1 : 0,
+      rightPlanted ? 0.85 : 0,
+      walker.speed > 0.12 ? 0.9 : 0,
+    ];
+    if (!onLawn) {
+      if (!strokeReady) {
+        trail.forEach((value, index) => {
+          strokePrev[index] = value;
+        });
+        strokeReady = true;
+      }
+      for (let i = 0; i < strokes.length; i++) {
+        const stroke = strokes[i]!;
+        stroke.px = strokePrev[i * 2] ?? stroke.x;
+        stroke.pz = strokePrev[i * 2 + 1] ?? stroke.z;
+        stroke.x = trail[i * 2] ?? stroke.x;
+        stroke.z = trail[i * 2 + 1] ?? stroke.z;
+        stroke.pressure = pressures[i] ?? 0;
+      }
+      sand.step(strokes, dt);
+      trail.forEach((value, index) => {
+        strokePrev[index] = value;
+      });
+      toys.update(dt, time);
+      if (toys.collectNear(figure.root.position.x, figure.root.position.z, 0.62)) {
+        showCollect();
+        if (toys.remaining === 0) enterLawn();
+      }
+    }
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;
