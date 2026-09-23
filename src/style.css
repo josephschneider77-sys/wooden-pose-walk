@@ -27,6 +27,23 @@ body,
   touch-action: none;
 }
 
+.collect {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 248, 236, 0.9);
+  color: #6a3d12;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
 .hint {
   position: absolute;
   z-index: 2;
