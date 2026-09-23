@@ -1,7 +1,9 @@
 import {
   ACESFilmicToneMapping,
   SRGBColorSpace,
+  UnsignedByteType,
   Vector2,
+  WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
 import type { Camera, Scene } from "three";
@@ -33,8 +35,18 @@ export function createImagePipeline(
   renderer.toneMappingExposure = 1.05;
 
   const size = renderer.getSize(new Vector2());
-  const composer = new EffectComposer(renderer);
-  composer.setPixelRatio(renderer.getPixelRatio());
+  const pixelRatio = renderer.getPixelRatio();
+  // Bloom adds its result into this buffer. A half-float target accepts
+  // that blend poorly here: the beauty pass is replaced with a clear
+  // frame, and the page shows only its beige background. 8-bit targets
+  // keep the same GTAO, bloom, and ACES chain on screen.
+  const composer = new EffectComposer(
+    renderer,
+    new WebGLRenderTarget(size.x * pixelRatio, size.y * pixelRatio, {
+      type: UnsignedByteType,
+    }),
+  );
+  composer.setPixelRatio(pixelRatio);
   composer.addPass(new RenderPass(scene, camera));
 
   const gtao = new GTAOPass(scene, camera, size.x, size.y);

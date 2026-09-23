@@ -136,6 +136,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const pointerState = { x: 0, y: 0, moved: false };
   let grab: Grab | null = null;
   let hover: LimbId | null = null;
+  let presentDirect = false;
 
   const setPointer = (event: PointerEvent): void => {
     pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -296,9 +297,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   };
 
   const tick = (now: number) => {
-    const dt = Math.min(0.033, (now - last) / 1000);
+    // The first animation timestamp can sit behind performance.now() after a
+    // long startup. A negative step flings the orbit target underground and
+    // the view is only the beige clear color.
+    const dt = Math.min(0.033, Math.max(0, (now - last) / 1000));
     last = now;
     const time = now / 1000;
+    if (dt === 0) {
+      pipeline.render(false, false, false, false);
+      requestAnimationFrame(tick);
+      return;
+    }
 
     const { walkWeight } = steerWalker(walker, figure.root.position, dt);
     const contacts = poseMannequin(figure, walker, walkWeight, time, {
@@ -387,8 +396,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     controls.update();
     snapKeyShadow(key, follow);
 
-    const post = debugMode("post") !== "off";
-    pipeline.render(post, post, post, debugMode("ao") === "debug");
+    const post = !presentDirect && debugMode("post") !== "off";
+    try {
+      pipeline.render(post, post, post, debugMode("ao") === "debug");
+    } catch (error) {
+      presentDirect = true;
+      console.warn("Post processing failed; drawing the scene directly.", error);
+      renderer.render(scene, camera);
+    }
     requestAnimationFrame(tick);
   };
 
