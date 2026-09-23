@@ -8,14 +8,35 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Wooden mannequin</title>
-    <script type="module" crossorigin src="/wooden-pose-walk/assets/index-DQPB1rvL.js"></script>
-    <link rel="stylesheet" crossorigin href="/wooden-pose-walk/assets/index-BA8SZ7s8.css">
+    <script type="module" crossorigin src="/wooden-pose-walk/assets/index-BzWs6xfi.js"></script>
+    <link rel="stylesheet" crossorigin href="/wooden-pose-walk/assets/index-D31D26tJ.css">
   </head>
   <body>
     <div id="app">
       <canvas id="stage"></canvas>
-      <p class="collect" id="collect">10 left</p>
-      <p class="hint" id="hint">Grab an arm or a leg — tap the sand to walk</p>
+      <p class="collect" id="collect">10 finds</p>
+      <p class="purse" id="purse" hidden>Purse <span id="purse-coins">0</span> coppers</p>
+      <p class="hint" id="hint">Tap the sand to walk. With the jetpack on, fly through the glowing window.</p>
+      <div id="shop" class="shop" hidden>
+        <div class="shop-card">
+          <header class="shop-head">
+            <div>
+              <h2>The Other You</h2>
+              <p>He buys what you are wearing. The moth-gate only answers to a lantern he sold.</p>
+            </div>
+            <p class="shop-coins">Purse <span id="shop-coins">0</span></p>
+            <button type="button" id="shop-close">Close</button>
+          </header>
+          <section>
+            <h3>Sell</h3>
+            <ul id="shop-sell"></ul>
+          </section>
+          <section>
+            <h3>Buy</h3>
+            <ul id="shop-buy"></ul>
+          </section>
+        </div>
+      </div>
     </div>
   </body>
 </html>
