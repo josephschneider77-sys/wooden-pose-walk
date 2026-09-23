@@ -9,7 +9,7 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the sand** — walk there
 - **Walk into wearable gear, or tap it** — pick it up and put it on. Beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, and jetpack. Finding them does not change the room
-- **Double-tap the sand with the jetpack on** — fly. Tap the glowing window to climb through it into the night terrace (level 2)
+- **Double-tap the sand with the jetpack on** — fly. Tap the glowing window and he flies through the frames onto the night terrace (level 2)
 - **On the terrace** — pick up the knife and drag the right arm through the watermelons. The stairwell opens onto the bazaar, then the vault, then the beach
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
@@ -64,7 +64,7 @@ Level 1 is the sand room. The cloak, fur hat, and sand all follow [scottstts/Thr
 - **Fur hat** — shell layers for the dense coat, plus head-local strands that use the simulated-fur Verlet groom and two-lobe ribbon shading. The gallery field is about 420,000 GPU strands; this hat uses 1,500 strands on desktop and 720 on mobile, parented to the head so walk and IK do not tear it off. Collecting the beret takes the fur hat off and seats the beret on the head.
 - **Sand** — mineral-grain albedo, normal, and roughness from the deformable-sand example, on a CPU heightfield. Walking drags a contact stroke (the skill’s tool segment): the foot and the path excavate, push a berm in the direction of motion, and slump at the dynamic repose slope (0.48 while fresh, 0.625 once it settles). A small pool of kicked grains follows the stroke. Desktop runs a finer grid and more slump sweeps than mobile. The gallery path (512² WebGPU transport, 16k airborne grains, and the wave reset) is not shipped. Grain pitch is about 6 mm so the speckle still reads from the orbit camera.
 - **Level 1 gear** — the original wearable set (beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, jetpack) scattered on the sand. Picking one up equips it on the mannequin. The jetpack flames while you walk or fly. Wearing every piece brightens the window; it does not swap the sand for a lawn.
-- **Window** — ebony mullions on the left wall, with a dim gold glow. The jetpack alone opens that passage: the mullions drop away and a tap on the glow flies you onto the night terrace. Wearing every other find only makes the glow hotter.
+- **Window** — ebony mullions on the left wall, with a gold glow. The jetpack alone is enough: tap the window and he flies across the sand and through the frames onto the night terrace. Wearing every find makes that glow hot and drops the mullions. It does not skip the flight.
 - **Later rooms** — the terrace holds a knife and watermelons. Chopping them opens the stairwell, which drops into the bazaar. Sell worn gear to the twin, buy his lantern, and walk it to the moth-gate. The vault lights snuff as you reach them, and the last one lets you out onto the beach.
 
 Query flags for the controlling fields: `?cloth=wire`, `?fur=base`, `?fur=strands`, `?sand=height`.

@@ -134,6 +134,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   let upperCleared = false;
   let pendingShop = false;
   let lastPortal = -10;
+  let windowFlight = false;
   let floorY = 0;
   let strokeReady = false;
 
@@ -189,17 +190,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (windowsGone) return;
     const pack = gear.isWorn("jetpack");
     const open = gear.allWorn();
-    // The jetpack alone opens the passage. The rest of the finds only heat the glow.
-    rooms.windowFrame.visible = !pack;
+    // Frames stay until every find is worn, so the jetpack still flies through them.
+    rooms.windowFrame.visible = !open;
     const glow = rooms.windowGlow.material as MeshBasicMaterial;
     if (open) {
       glow.color.setRGB(3.1, 2.7, 2.15);
       glow.transparent = false;
       glow.opacity = 1;
     } else if (pack) {
-      glow.color.setRGB(2.4, 1.9, 1.15);
+      glow.color.set("#f3d7a2");
       glow.transparent = true;
-      glow.opacity = 0.9;
+      glow.opacity = 0.62;
     } else {
       glow.color.set("#e8c888");
       glow.transparent = true;
@@ -471,6 +472,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const enterWorld = (next: "sand" | "roof"): void => {
     if (upperCleared) return;
     lastPortal = performance.now() / 1000;
+    windowFlight = false;
     world = next;
     rooms.home.visible = next === "sand";
     rooms.roof.visible = next === "roof";
@@ -819,18 +821,22 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
   function commitWindow(): void {
     pendingGo = null;
-    if (gear.isWorn("jetpack")) {
-      enterWorld(world === "roof" ? "sand" : "roof");
+    if (!gear.isWorn("jetpack")) {
+      if (world === "roof") {
+        enterWorld("sand");
+        return;
+      }
+      gear.walkTarget("jetpack", floorPoint);
+      floorPoint.y = 0;
+      goTo(floorPoint, false);
+      hint.textContent = "Walking to the jetpack — then tap the window";
       return;
     }
-    if (world === "roof") {
-      enterWorld("sand");
-      return;
-    }
-    gear.walkTarget("jetpack", floorPoint);
-    floorPoint.y = 0;
-    goTo(floorPoint, false);
-    hint.textContent = "Walking to the jetpack — then tap the window";
+    // Fly through the frames. The terrace opens when the body reaches the opening.
+    if (!grab) releasePose();
+    windowFlight = true;
+    setDestination(walker, rooms.portalApproach, true, 2.55);
+    hint.textContent = "Flying through the window";
   }
 
   const pipeline = createImagePipeline(renderer, scene, camera);
@@ -952,7 +958,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         !windowsGone &&
         flying &&
         wall - lastPortal > 1.3 &&
-        throughPortal(figure.root.position)
+        crossesWindow(figure.root.position, windowFlight)
       ) {
         enterWorld(world === "sand" ? "roof" : "sand");
       }
@@ -1227,10 +1233,14 @@ function pickWindow(raycaster: Raycaster, pane: Mesh): boolean {
   return raycaster.intersectObject(pane, false).length > 0;
 }
 
-function throughPortal(pos: Vector3): boolean {
-  // The opening sits on the left wall. Crossing the near side of that wall,
-  // while airborne, is enough — the old plane was past where a room flight stops.
-  return pos.x < -6.4 && Math.abs(pos.z - PORTAL.z) < 2.6 && pos.y > 0.22;
+function crossesWindow(pos: Vector3, aimedAtWindow: boolean): boolean {
+  if (pos.y <= 0.32) return false;
+  const dx = pos.x - PORTAL.x;
+  const dz = pos.z - PORTAL.z;
+  // Through the frames: past the near edge of the opening, lined up with it.
+  if (pos.x < PORTAL.x + 1.05 && Math.abs(dz) < PORTAL.halfW + 0.55) return true;
+  // A flight aimed at the window that stops just short of that plane still counts.
+  return aimedAtWindow && Math.hypot(dx, dz) < 1.7;
 }
 
 function buildRooms(scene: Scene, sand: SandFloor): Rooms {
@@ -1360,7 +1370,7 @@ function buildRooms(scene: Scene, sand: SandFloor): Rooms {
     nightView,
     returnWindow,
     roofWindow,
-    portalApproach: new Vector3(-10.5, 0, PORTAL.z),
+    portalApproach: new Vector3(PORTAL.x - 1.35, 0, PORTAL.z),
     melons,
     stairs,
     floorPlug,
