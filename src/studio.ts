@@ -30,6 +30,8 @@ import {
   steerWalker,
 } from "./locomotion";
 import { ClothCape } from "./cape";
+import { FurHat } from "./furHat";
+import { SandFloor } from "./sandFloor";
 import {
   isArm,
   LEG_REACH,
@@ -43,8 +45,8 @@ import {
 } from "./mannequin";
 import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
-import { createGrassBlades, createGrassGround } from "./grass";
 import { createImagePipeline } from "./pipeline";
+import { debugMode } from "./quality";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
 const ROOM = 8.4;
@@ -74,8 +76,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   renderer.shadowMap.type = PCFSoftShadowMap;
 
   const scene = new Scene();
-  scene.background = new Color("#c5d4ae");
-  scene.fog = new Fog("#c5d4ae", 13, 30);
+  scene.background = new Color("#efe2c8");
+  scene.fog = new Fog("#efe2c8", 14, 32);
   const pmrem = new PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.32;
@@ -92,13 +94,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   controls.maxDistance = 9;
   controls.target.set(0, 0.95, 0);
 
-  const key = buildRoom(scene);
+  const sand = new SandFloor();
+  const key = buildRoom(scene, sand);
 
   const figure = new WoodenMannequin();
   scene.add(figure.root);
   void attachRealisticFace(figure);
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
+  const hat = new FurHat(figure);
   const pickList = figure.pickables();
 
   const walker = createWalker();
@@ -214,7 +218,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (!grab) {
       hint.textContent = hover
         ? `Drag the ${limbLabel(hover)} to pose it`
-        : "Grab an arm or a leg to pose it";
+        : "Grab an arm or a leg — tap the sand to walk";
     }
   });
 
@@ -261,6 +265,14 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const follow = new Vector3();
   const leftToe = new Vector3();
   const rightToe = new Vector3();
+  const leftHeel = new Vector3();
+  const rightHeel = new Vector3();
+  const plants = [
+    { x: 0, z: 0, planted: false },
+    { x: 0, z: 0, planted: false },
+    { x: 0, z: 0, planted: false },
+    { x: 0, z: 0, planted: false },
+  ];
   const holdWorld = new Vector3();
   let last = performance.now();
 
@@ -349,7 +361,25 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       highlight.visible = false;
     }
 
-    cape.update(dt, time, walker.speed, walker.yaw);
+    cape.update(dt, time, walker.speed, walker.yaw, (x, z) => sand.heightAt(x, z));
+    hat.update(dt, time, camera, walker.speed, walker.yaw);
+    figure.worldPos("leftHeel", leftHeel);
+    figure.worldPos("rightHeel", rightHeel);
+    const leftPlanted = contacts.leftContact && !holds.has("leftLeg");
+    const rightPlanted = contacts.rightContact && !holds.has("rightLeg");
+    plants[0]!.x = leftHeel.x;
+    plants[0]!.z = leftHeel.z;
+    plants[0]!.planted = leftPlanted;
+    plants[1]!.x = leftTarget.x;
+    plants[1]!.z = leftTarget.z;
+    plants[1]!.planted = leftPlanted;
+    plants[2]!.x = rightHeel.x;
+    plants[2]!.z = rightHeel.z;
+    plants[2]!.planted = rightPlanted;
+    plants[3]!.x = rightTarget.x;
+    plants[3]!.z = rightTarget.z;
+    plants[3]!.planted = rightPlanted;
+    sand.step(plants);
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;
@@ -357,7 +387,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     controls.update();
     snapKeyShadow(key, follow);
 
-    pipeline.render(true, true, true, false);
+    const post = debugMode("post") !== "off";
+    pipeline.render(post, post, post, debugMode("ao") === "debug");
     requestAnimationFrame(tick);
   };
 
@@ -382,9 +413,8 @@ function pickFloor(
   return Math.abs(out.x) <= ROOM + 0.4 && Math.abs(out.z) <= ROOM + 0.4;
 }
 
-function buildRoom(scene: Scene): DirectionalLight {
-  scene.add(createGrassGround());
-  scene.add(createGrassBlades());
+function buildRoom(scene: Scene, sand: SandFloor): DirectionalLight {
+  scene.add(sand.mesh);
 
   const wallMat = createPlasterMaterial();
   const back = new Mesh(new PlaneGeometry(20, 6.5), wallMat);
@@ -414,7 +444,7 @@ function buildRoom(scene: Scene): DirectionalLight {
   sash.receiveShadow = true;
   scene.add(sash);
 
-  const sky = new HemisphereLight("#eef6ff", "#4a6b32", 0.62);
+  const sky = new HemisphereLight("#f7f1e6", "#b08958", 0.7);
   scene.add(sky);
 
   const key = new DirectionalLight("#fff4d8", 1.48);

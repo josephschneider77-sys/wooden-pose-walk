@@ -3,40 +3,36 @@ import {
   Mesh,
   MeshPhysicalMaterial,
   PlaneGeometry,
-  RepeatWrapping,
-  SRGBColorSpace,
-  TextureLoader,
   Vector3,
 } from "three";
 import type { WoodenMannequin } from "./mannequin";
 import { BodyShell } from "./bodyShell";
-import { satisfyConstraint, VerletCloth } from "./verletCloth";
+import { debugMode, graphicsTier } from "./quality";
+import { createCloakWeave } from "./weaveFabric";
+import { WovenSheet } from "./wovenCloth";
 
-const WIDTH_SEGS = 18;
-const HEIGHT_SEGS = 22;
-const CAPE_LENGTH = 0.98;
-const MASS = 1.4;
-const GRAVITY = new Vector3(0, -30, 0);
-const TIMESTEP = 1 / 60;
-const TIMESTEP_SQ = TIMESTEP * TIMESTEP;
-const ITERATIONS = 8;
-const FRICTION = 0.72;
-const SPIKE = 0.055;
-const FLOOR_Y = 0.03;
+/**
+ * Shoulder cloak driven by the simulated-cloth skill's woven sheet:
+ * yarn stretch, shear locking, bending, air drag, and frictional contact
+ * with the wooden torso. The 96×96 WebGPU hash is replaced by this
+ * cape-sized CPU tier (see README).
+ */
+const CAPE_LENGTH = 1.05;
+const CAPE_WIDTH = 0.96;
+const DENSITY = 0.42;
+const GRAVITY = -9.81;
 const COLLAR_A0 = Math.PI * 0.4;
 const COLLAR_A1 = Math.PI * 1.6;
+const SPIKE = 0.05;
+const GROUND_MU = 0.32;
+const BODY_MU = 0.22;
 
 const _force = new Vector3();
 const _normal = new Vector3();
 const _wind = new Vector3();
-const _forward = new Vector3();
-const _neck = new Vector3();
-const _chest = new Vector3();
-const _hit = new Vector3();
 const _yoke = new Vector3();
-const _side = new Vector3();
-const _back = new Vector3();
-const _avg = new Vector3();
+const _neck = new Vector3();
+const _tang = new Vector3();
 
 function bodyFrame(
   figure: WoodenMannequin,
@@ -56,7 +52,7 @@ function bodyFrame(
   );
 }
 
-/** Horseshoe collar: left shoulder → nape → right shoulder. */
+/** Horseshoe collar: left shoulder → nape → right shoulder, then down the back. */
 function cloakSurface(
   figure: WoodenMannequin,
   u: number,
@@ -65,42 +61,75 @@ function cloakSurface(
 ): void {
   const a = COLLAR_A0 + u * (COLLAR_A1 - COLLAR_A0);
   const side = Math.abs(Math.sin(a));
-  const radius = 0.13 + v * 0.22 + side * 0.02;
+  const radius = 0.145 + v * 0.26 + side * 0.03;
   const localX = Math.sin(a) * radius;
-  const localZ = Math.cos(a) * radius - v * 0.03;
-  const shoulderLift = side * 0.045 * (1 - v);
-  bodyFrame(figure, localX, -0.03 - v * CAPE_LENGTH + shoulderLift, localZ, out);
+  const localZ = Math.cos(a) * radius - v * 0.02;
+  const shoulderLift = side * 0.05 * (1 - v);
+  bodyFrame(figure, localX, -0.02 - v * CAPE_LENGTH + shoulderLift, localZ, out);
 }
 
-/**
- * Shoulder-wrapped cape: three.js Verlet cloth plus Drape bending
- * springs and frictional body contact. Collar is a neck horseshoe.
- */
+function applyFriction(velocity: Vector3, normal: Vector3, mu: number, dt: number): void {
+  const vn = velocity.dot(normal);
+  if (vn < 0) velocity.addScaledVector(normal, -vn);
+  _tang.copy(velocity).addScaledVector(normal, -velocity.dot(normal));
+  const ts = _tang.length();
+  const dv = mu * 9.81 * Math.max(normal.y, 0) * dt;
+  if (ts > 1e-8 && dv > 0) {
+    if (ts <= dv) velocity.addScaledVector(_tang, -1);
+    else velocity.addScaledVector(_tang, -dv / ts);
+  }
+}
+
 export class ClothCape {
   readonly mesh: Mesh;
   private readonly figure: WoodenMannequin;
-  private readonly cloth: VerletCloth;
+  private readonly sheet: WovenSheet;
   private readonly geometry: PlaneGeometry;
   private readonly shell = new BodyShell();
+  private readonly substeps: number;
+  private readonly strain: number;
+  private readonly groundScratch = new Vector3();
 
   constructor(figure: WoodenMannequin) {
     this.figure = figure;
+    const tier = graphicsTier();
+    const w = tier === "mobile" ? 16 : 26;
+    const h = tier === "mobile" ? 20 : 32;
+    this.substeps = tier === "mobile" ? 2 : 3;
+    this.strain = tier === "mobile" ? 2 : 3;
     this.figure.refreshWorld();
-    this.cloth = new VerletCloth(WIDTH_SEGS, HEIGHT_SEGS, (u, v, out) => {
+    this.sheet = new WovenSheet(w, h, CAPE_WIDTH, CAPE_LENGTH, DENSITY, (u, v, out) => {
       cloakSurface(this.figure, u, v, out);
     });
-    for (const p of this.cloth.particles) p.invMass = 1 / MASS;
 
-    this.geometry = new PlaneGeometry(1, 1, WIDTH_SEGS, HEIGHT_SEGS);
+    this.geometry = new PlaneGeometry(1, 1, w, h);
+    const uv = this.geometry.attributes.uv;
+    if (uv) {
+      for (let v = 0; v <= h; v++) {
+        for (let u = 0; u <= w; u++) {
+          uv.setXY(u + v * (w + 1), u / w, 1 - v / h);
+        }
+      }
+      this.geometry.setAttribute("uv2", uv.clone());
+    }
+    const weave = createCloakWeave(tier === "mobile" ? 384 : 512);
     const material = new MeshPhysicalMaterial({
-      color: "#111111",
-      roughness: 0.94,
+      name: "cloak-weave",
+      map: weave.albedo,
+      normalMap: weave.normal,
+      normalScale: weave.normalScale,
+      roughnessMap: weave.rough,
+      aoMap: weave.ao,
+      aoMapIntensity: 0.75,
+      color: "#ffffff",
+      roughness: 1,
       metalness: 0,
-      clearcoat: 0,
-      sheen: 0.22,
-      sheenRoughness: 0.72,
-      sheenColor: "#141414",
+      sheen: 0.62,
+      sheenRoughness: 0.48,
+      sheenColor: "#4a4038",
+      anisotropy: 0.42,
       side: DoubleSide,
+      envMapIntensity: 0.4,
     });
     this.mesh = new Mesh(this.geometry, material);
     this.mesh.name = "cloak";
@@ -109,184 +138,105 @@ export class ClothCape {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 4;
     material.polygonOffset = true;
-    material.polygonOffsetFactor = -4;
-    material.polygonOffsetUnits = -4;
-    material.depthWrite = true;
-    this.loadFabric(material);
+    material.polygonOffsetFactor = -2;
+    material.polygonOffsetUnits = -2;
+    if (debugMode("cloth") === "wire") material.wireframe = true;
 
     this.pinCollar();
-    for (let i = 0; i < 48; i++) this.step(1 / 60, 0, 0, 0);
+    for (let i = 0; i < 36; i++) this.substep(1 / 60, 0, 0, 0, () => 0);
     this.writeGeometry();
   }
 
-  update(dt: number, time: number, walkSpeed: number, yaw: number): void {
-    const steps = Math.max(1, Math.min(3, Math.round(dt / TIMESTEP)));
-    for (let i = 0; i < steps; i++) this.step(dt / steps, time, walkSpeed, yaw);
+  update(
+    dt: number,
+    time: number,
+    walkSpeed: number,
+    yaw = 0,
+    floorAt: (x: number, z: number) => number = () => 0,
+  ): void {
+    const steps = this.substeps;
+    const h = Math.min(dt, 0.05) / steps || 1 / 180;
+    for (let i = 0; i < steps; i++) this.substep(h, time, walkSpeed, yaw, floorAt);
     this.writeGeometry();
   }
 
-  private loadFabric(material: MeshPhysicalMaterial): void {
-    const base = import.meta.env.BASE_URL;
-    const loader = new TextureLoader();
-    const color = loader.load(`${base}textures/cloak/color.jpg`);
-    color.colorSpace = SRGBColorSpace;
-    color.wrapS = color.wrapT = RepeatWrapping;
-    color.repeat.set(2.4, 3.2);
-    color.anisotropy = 8;
-    const normal = loader.load(`${base}textures/cloak/normal.jpg`);
-    normal.wrapS = normal.wrapT = RepeatWrapping;
-    normal.repeat.copy(color.repeat);
-    normal.anisotropy = 8;
-    const roughness = loader.load(`${base}textures/cloak/roughness.jpg`);
-    roughness.wrapS = roughness.wrapT = RepeatWrapping;
-    roughness.repeat.copy(color.repeat);
-    material.map = color;
-    material.normalMap = normal;
-    material.roughnessMap = roughness;
-    material.color.set("#0a0a0a");
-    material.needsUpdate = true;
-  }
-
-  private step(dt: number, time: number, walkSpeed: number, yaw = 0): void {
+  private substep(
+    dt: number,
+    time: number,
+    walkSpeed: number,
+    yaw: number,
+    floorAt: (x: number, z: number) => number,
+  ): void {
     this.figure.refreshWorld();
     this.pinCollar();
+    const facing = this.figure.bone("root").rotation.y;
+    _wind.set(-Math.sin(yaw), 0.04, -Math.cos(yaw)).multiplyScalar(0.55 + walkSpeed * 1.15);
+    _wind.x += Math.sin(time * 0.8) * 0.28;
+    _wind.z += Math.cos(time * 0.55) * 0.18;
 
-    const timesq = Math.min(dt, 0.028) ** 2 || TIMESTEP_SQ;
-    const particles = this.cloth.particles;
-    const index = this.geometry.index;
-    const normals = this.geometry.attributes.normal;
-
-    _wind.set(Math.sin(time * 1.4), 0.05, Math.cos(time * 0.9)).multiplyScalar(0.035);
-    _wind.x += Math.sin(yaw) * walkSpeed * 0.12;
-    _wind.z += Math.cos(yaw) * walkSpeed * 0.12;
-
-    if (index) {
-      for (let i = 0, il = index.count; i < il; i += 3) {
-        for (let j = 0; j < 3; j++) {
-          const id = index.getX(i + j);
-          _normal.fromBufferAttribute(normals, id);
-          _force.copy(_normal).multiplyScalar(_normal.dot(_wind));
-          particles[id].addForce(_force);
-        }
-      }
+    this.sheet.integrate(dt, _wind, GRAVITY);
+    for (let n = 0; n < this.strain; n++) {
+      this.sheet.structural();
+      this.sheet.shear(dt);
+      this.sheet.bend(dt);
+      this.pinCollar();
     }
-
-    _force.copy(GRAVITY).multiplyScalar(MASS);
-    for (const p of particles) {
-      p.addForce(_force);
-      p.integrate(timesq);
-    }
+    this.softYoke();
+    this.sheet.separateFolds();
+    this.sheet.flattenSpikes(SPIKE);
+    this.pinCollar();
 
     this.shell.refresh(this.figure);
-    const facing = this.figure.bone("root").rotation.y;
-    _back.set(-Math.sin(facing), 0, -Math.cos(facing));
-    const free = (this.cloth.w + 1) * 2;
+    const back = _force.set(-Math.sin(facing), 0, -Math.cos(facing));
+    this.shell.resolve(this.sheet.points, this.sheet.w + 1, false, back);
 
-    for (let n = 0; n < ITERATIONS; n++) {
-      for (const c of this.cloth.constraints) {
-        satisfyConstraint(c.a, c.b, c.rest);
-      }
-      this.pinCollar();
-      if (n % 2 === 1) this.shell.resolve(particles, free, false, _back);
-    }
-
-    this.keepOnBack();
-    for (const p of particles) {
-      if (p.position.y < FLOOR_Y) {
-        p.position.y = FLOOR_Y;
-        p.previous.x += (p.position.x - p.previous.x) * FRICTION;
-        p.previous.z += (p.position.z - p.previous.z) * FRICTION;
+    for (let i = this.sheet.w + 1; i < this.sheet.points.length; i++) {
+      const p = this.sheet.points[i]!;
+      const gy = floorAt(p.position.x, p.position.z) + 0.008;
+      if (p.position.y < gy) {
+        const lift = gy - p.position.y;
+        p.position.y = gy;
+        p.previous.y += lift;
       }
     }
 
+    this.sheet.finishVelocity(dt);
+    for (let i = this.sheet.w + 1; i < this.sheet.points.length; i++) {
+      const p = this.sheet.points[i]!;
+      const gy = floorAt(p.position.x, p.position.z) + 0.008;
+      if (p.position.y <= gy + 0.0015) {
+        applyFriction(p.velocity, this.groundScratch.set(0, 1, 0), GROUND_MU, dt);
+      }
+      if (this.shell.contactNormal(p.position, _normal)) {
+        applyFriction(p.velocity, _normal, BODY_MU, dt);
+      }
+    }
     this.pinCollar();
-    this.softYoke();
-    this.keepOnBack();
-    this.shell.resolve(particles, free, true, _back);
-    this.flattenSpikes();
-    for (let n = 0; n < 3; n++) {
-      for (const c of this.cloth.constraints) {
-        satisfyConstraint(c.a, c.b, c.rest);
-      }
-      this.pinCollar();
-    }
-    this.shell.resolve(particles, free, true, _back);
-    this.flattenSpikes();
-    this.pinCollar();
-  }
-
-  private keepOnBack(): void {
-    const yaw = this.figure.bone("root").rotation.y;
-    _forward.set(Math.sin(yaw), 0, Math.cos(yaw));
-    _side.set(Math.cos(yaw), 0, -Math.sin(yaw));
-    this.figure.worldPos("chest", _chest);
-    for (let i = this.cloth.w + 1; i < this.cloth.particles.length; i++) {
-      const p = this.cloth.particles[i];
-      _hit.subVectors(p.position, _chest);
-      const lateral = Math.abs(_hit.dot(_side));
-      if (lateral > 0.14) continue;
-      const intoBody = _hit.dot(_forward) + 0.02;
-      if (intoBody > 0.015) {
-        p.position.addScaledVector(_forward, -intoBody * 0.45);
-      }
-    }
   }
 
   private pinCollar(): void {
-    for (let u = 0; u <= this.cloth.w; u++) {
-      const p = this.cloth.particles[this.cloth.index(u, 0)];
-      cloakSurface(this.figure, u / this.cloth.w, 0, p.position);
+    for (let u = 0; u <= this.sheet.w; u++) {
+      const p = this.sheet.points[this.sheet.index(u, 0)]!;
+      cloakSurface(this.figure, u / this.sheet.w, 0, p.position);
       p.previous.copy(p.position);
-    }
-  }
-
-  /** Pull isolated vertices back toward their neighbors. */
-  private flattenSpikes(): void {
-    const { w, h, particles } = this.cloth;
-    for (let v = 1; v <= h; v++) {
-      for (let u = 0; u <= w; u++) {
-        const p = particles[this.cloth.index(u, v)];
-        _avg.set(0, 0, 0);
-        let n = 0;
-        if (u > 0) {
-          _avg.add(particles[this.cloth.index(u - 1, v)].position);
-          n++;
-        }
-        if (u < w) {
-          _avg.add(particles[this.cloth.index(u + 1, v)].position);
-          n++;
-        }
-        if (v > 0) {
-          _avg.add(particles[this.cloth.index(u, v - 1)].position);
-          n++;
-        }
-        if (v < h) {
-          _avg.add(particles[this.cloth.index(u, v + 1)].position);
-          n++;
-        }
-        if (n < 3) continue;
-        _avg.multiplyScalar(1 / n);
-        if (p.position.distanceTo(_avg) > SPIKE) {
-          p.position.lerp(_avg, 0.7);
-          p.previous.lerp(p.position, 0.25);
-        }
-      }
+      p.velocity.set(0, 0, 0);
+      p.invMass = 0;
     }
   }
 
   private softYoke(): void {
-    for (let u = 0; u <= this.cloth.w; u++) {
-      cloakSurface(this.figure, u / this.cloth.w, 0.07, _yoke);
-      const p = this.cloth.particles[this.cloth.index(u, 1)];
-      p.position.lerp(_yoke, 0.28);
-      p.previous.lerp(_yoke, 0.12);
+    for (let u = 0; u <= this.sheet.w; u++) {
+      cloakSurface(this.figure, u / this.sheet.w, 0.08, _yoke);
+      const p = this.sheet.points[this.sheet.index(u, 1)]!;
+      p.position.lerp(_yoke, 0.18);
     }
   }
 
   private writeGeometry(): void {
     const pos = this.geometry.attributes.position;
-    for (let i = 0; i < this.cloth.particles.length; i++) {
-      const p = this.cloth.particles[i];
+    if (!pos) return;
+    for (let i = 0; i < this.sheet.points.length; i++) {
+      const p = this.sheet.points[i]!;
       pos.setXYZ(i, p.position.x, p.position.y, p.position.z);
     }
     pos.needsUpdate = true;
