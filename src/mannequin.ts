@@ -207,6 +207,8 @@ export class WoodenMannequin {
       enableToeLookAt: boolean;
       softening: number;
       maxReach?: number;
+      /** Added to the planted-foot floor. Stairs pass a negative cellar height. */
+      groundY?: number;
     },
   ): void {
     const hipName = side === "left" ? "leftHip" : "rightHip";
@@ -222,9 +224,10 @@ export class WoodenMannequin {
     const toe = this.bone(toeName);
     const toeEnd = this.bone(toeEndName);
 
+    const floor = options.groundY ?? 0;
     const toeTarget = targetToe.clone();
     if (options.enableHeightClamp) {
-      toeTarget.y = Math.max(toeTarget.y, this.toeMinHeight);
+      toeTarget.y = Math.max(toeTarget.y, this.toeMinHeight + floor);
     }
 
     xformOf(heel, _heelX);
@@ -233,7 +236,7 @@ export class WoodenMannequin {
       _heelX.translation.clone().sub(_toeX.translation),
     );
     if (options.enableHeightClamp) {
-      targetHeel.y = Math.max(targetHeel.y, this.heelMinHeight);
+      targetHeel.y = Math.max(targetHeel.y, this.heelMinHeight + floor);
     }
 
     xformOf(pelvis, _pelvisX);
@@ -280,7 +283,7 @@ export class WoodenMannequin {
       xformOf(toeEnd, _toeEndX);
       const toeEndTarget = _toeEndX.translation.clone();
       if (options.enableHeightClamp) {
-        toeEndTarget.y = Math.max(toeEndTarget.y, this.toeEndMinHeight);
+        toeEndTarget.y = Math.max(toeEndTarget.y, this.toeEndMinHeight + floor);
       }
       toe.quaternion.copy(
         boneOrientTowards(_heelX, _toeX, _toeEndX, toeEndTarget),

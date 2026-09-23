@@ -10,6 +10,7 @@ import {
   TorusGeometry,
   Vector3,
 } from "three";
+import type { Object3D, Raycaster } from "three";
 import type { BoneName, WoodenMannequin } from "./mannequin";
 import type { SandFloor } from "./sandFloor";
 
@@ -23,7 +24,8 @@ export type WearSlot =
   | "feet"
   | "back"
   | "rightHand"
-  | "leftHand";
+  | "leftHand"
+  | "lamp";
 
 export type WearId =
   | "beret"
@@ -35,7 +37,23 @@ export type WearId =
   | "socks"
   | "sword"
   | "shield"
-  | "jetpack";
+  | "jetpack"
+  | "lantern";
+
+export const LANTERN_COST = 15;
+
+export const SELL_PRICE: Record<Exclude<WearId, "lantern">, number> = {
+  beret: 4,
+  sunglasses: 5,
+  shoes: 6,
+  shirt: 7,
+  pants: 7,
+  belt: 5,
+  socks: 3,
+  sword: 10,
+  shield: 9,
+  jetpack: 16,
+};
 
 const BOB = 0.014;
 
@@ -51,6 +69,7 @@ const SPOTS: Record<WearId, { x: number; z: number }> = {
   pants: { x: -2.2, z: -0.85 },
   belt: { x: 0.85, z: -0.75 },
   socks: { x: -0.7, z: -0.95 },
+  lantern: { x: 0, z: 0 },
 };
 
 interface PairBind {
@@ -74,6 +93,7 @@ interface WearSpec {
   drop: Vector3;
   /** How far the resting mesh sits above the sand. */
   lift: number;
+  shopOnly?: boolean;
 }
 
 const SPECS: WearSpec[] = [
@@ -218,6 +238,19 @@ const SPECS: WearSpec[] = [
     drop: new Vector3(0, 0, -0.55),
     lift: 0.14,
   },
+  {
+    id: "lantern",
+    slot: "lamp",
+    title: "brass lantern",
+    found: "The brass lantern is yours — walk it to the moth-gate",
+    lawn: new Vector3(0, 0, 0),
+    bone: "chest",
+    wearPos: new Vector3(0.18, 0.02, 0.14),
+    wearRot: new Vector3(0.15, 0, 0.2),
+    drop: new Vector3(0.4, 0, 0.2),
+    lift: 0,
+    shopOnly: true,
+  },
 ];
 
 /**
@@ -231,13 +264,17 @@ export class GearShelf {
   collected = 0;
   private readonly figure: WoodenMannequin;
   private readonly items: WearItem[];
+  private ground: Object3D;
+  private readonly scratch = new Vector3();
 
   constructor(sand: SandFloor, figure: WoodenMannequin) {
     this.figure = figure;
     this.group.name = "level-1-gear";
+    this.ground = this.group;
     this.items = SPECS.map((spec) => new WearItem(spec));
-    this.total = this.items.length;
+    this.total = this.items.filter((item) => !item.spec.shopOnly).length;
     for (const item of this.items) {
+      if (item.spec.shopOnly) continue;
       const y = sand.heightAt(item.lawn.x, item.lawn.z) + item.spec.lift;
       item.lawn.y = y;
       item.root.position.copy(item.lawn);
@@ -249,14 +286,28 @@ export class GearShelf {
     return this.total - this.collected;
   }
 
+  /** Finds still on the sand. The window, not this count, is level 2. */
   label(): string {
-    if (this.remaining <= 0) return "Level 2";
-    if (this.collected === 0) return `${this.total} left`;
-    return `Collected ${this.collected}/${this.total}`;
+    if (this.remaining <= 0) return "Fly the window";
+    if (this.collected === 0) return `${this.total} finds`;
+    return `${this.remaining} finds left`;
+  }
+
+  allWorn(): boolean {
+    const lawn = this.items.filter((item) => !item.spec.shopOnly);
+    return lawn.length > 0 && lawn.every((item) => item.worn);
   }
 
   wearing(id: WearId): boolean {
+    return this.isWorn(id);
+  }
+
+  isWorn(id: WearId): boolean {
     return this.items.some((item) => item.spec.id === id && item.worn);
+  }
+
+  setGround(ground: Object3D): void {
+    this.ground = ground;
   }
 
   setThrust(on: boolean, time: number): void {
@@ -273,7 +324,7 @@ export class GearShelf {
     let best: WearItem | null = null;
     let bestD = radius;
     for (const item of this.items) {
-      if (item.worn) continue;
+      if (item.worn || item.spec.shopOnly) continue;
       const d = Math.hypot(item.lawn.x - x, item.lawn.z - z);
       if (d < bestD) {
         best = item;
@@ -281,9 +332,68 @@ export class GearShelf {
       }
     }
     if (!best) return null;
-    best.attach(this.figure);
-    this.collected += 1;
-    return best.spec.found;
+    return this.wear(best);
+  }
+
+  forceWear(id: WearId): string | null {
+    const item = this.items.find((entry) => entry.spec.id === id);
+    if (!item || item.worn) return null;
+    return this.wear(item);
+  }
+
+  walkTarget(id: WearId, out: Vector3): Vector3 {
+    const item = this.items.find((entry) => entry.spec.id === id);
+    if (!item || item.worn) return out;
+    return out.copy(item.lawn);
+  }
+
+  hit(raycaster: Raycaster): { id: WearId; title: string; worn: boolean } | null {
+    const meshes = this.items.flatMap((item) => item.pickMeshes);
+    const first = raycaster.intersectObjects(meshes, false)[0];
+    if (!first) return null;
+    const item = this.items.find((entry) => entry.owns(first.object));
+    if (!item) return null;
+    return { id: item.spec.id, title: item.spec.title, worn: item.worn };
+  }
+
+  takeOff(id: WearId): string | null {
+    const item = this.items.find((entry) => entry.spec.id === id && entry.worn);
+    if (!item) return null;
+    this.figure.root.getWorldPosition(this.scratch);
+    item.drop(this.ground, this.scratch, this.figure.bone("root").rotation.y);
+    if (!item.spec.shopOnly) this.collected = Math.max(0, this.collected - 1);
+    return `Took off the ${item.spec.title}`;
+  }
+
+  wornGoods(): { id: Exclude<WearId, "lantern">; title: string; price: number }[] {
+    return this.items
+      .filter((item) => item.worn && item.spec.id !== "lantern")
+      .map((item) => ({
+        id: item.spec.id as Exclude<WearId, "lantern">,
+        title: item.spec.title,
+        price: SELL_PRICE[item.spec.id as Exclude<WearId, "lantern">],
+      }));
+  }
+
+  sell(id: WearId): number | null {
+    if (id === "lantern") return null;
+    const item = this.items.find((entry) => entry.spec.id === id && entry.worn);
+    if (!item) return null;
+    item.discard();
+    this.collected = Math.max(0, this.collected - 1);
+    return SELL_PRICE[id];
+  }
+
+  buyLantern(): string | null {
+    const item = this.items.find((entry) => entry.spec.id === "lantern");
+    if (!item || item.worn) return null;
+    return this.wear(item);
+  }
+
+  private wear(item: WearItem): string {
+    item.attach(this.figure);
+    if (!item.spec.shopOnly) this.collected += 1;
+    return item.spec.found;
   }
 }
 
@@ -293,6 +403,7 @@ class WearItem {
   readonly pickMeshes: Mesh[] = [];
   readonly lawn: Vector3;
   worn = false;
+  gone = false;
   private readonly glint: Mesh;
   private readonly leftPart: Group | null = null;
   private readonly rightPart: Group | null = null;
@@ -362,6 +473,49 @@ class WearItem {
     figure.bone(this.spec.bone).add(this.root);
     this.worn = true;
   }
+
+  owns(object: Object3D): boolean {
+    return this.pickMeshes.includes(object as Mesh);
+  }
+
+  drop(ground: Object3D, figurePos: Vector3, yaw: number): void {
+    if (this.spec.pair && this.leftPart && this.rightPart) {
+      this.leftPart.removeFromParent();
+      this.rightPart.removeFromParent();
+      this.leftPart.position.copy(this.spec.pair.lawnL);
+      this.rightPart.position.copy(this.spec.pair.lawnR);
+      this.leftPart.rotation.set(0, 0, 0);
+      this.rightPart.rotation.set(0, 0, 0);
+      this.root.add(this.leftPart, this.rightPart);
+    } else {
+      this.root.removeFromParent();
+    }
+    for (const flame of this.flames) flame.visible = false;
+    const side = this.spec.drop.x;
+    const forward = this.spec.drop.z;
+    this.lawn.set(
+      figurePos.x + Math.cos(yaw) * side + Math.sin(yaw) * forward,
+      this.lawn.y,
+      figurePos.z + Math.sin(yaw) * side + Math.cos(yaw) * forward,
+    );
+    this.root.position.copy(this.lawn);
+    this.root.rotation.set(0, yaw, 0);
+    ground.add(this.root);
+    this.worn = false;
+  }
+
+  discard(): void {
+    if (this.spec.pair && this.leftPart && this.rightPart) {
+      this.leftPart.removeFromParent();
+      this.rightPart.removeFromParent();
+    } else {
+      this.root.removeFromParent();
+    }
+    for (const flame of this.flames) flame.visible = false;
+    this.glint.visible = false;
+    this.worn = false;
+    this.gone = true;
+  }
 }
 
 interface BuiltWearable {
@@ -381,6 +535,7 @@ function buildWearable(id: WearId): BuiltWearable {
   if (id === "socks") return { root: new Group(), left: buildSock(), right: buildSock(), flames: [] };
   if (id === "sword") return { root: buildSword(), flames: [] };
   if (id === "shield") return { root: buildShield(), flames: [] };
+  if (id === "lantern") return { root: buildLantern(), flames: [] };
   return buildJetpack();
 }
 
@@ -500,6 +655,33 @@ function buildShield(): Group {
   add(group, new Mesh(new CylinderGeometry(0.11, 0.11, 0.02, 24), wood)).rotation.x = Math.PI / 2;
   add(group, new Mesh(new TorusGeometry(0.11, 0.01, 8, 24), rim)).rotation.x = Math.PI / 2;
   add(group, new Mesh(new SphereGeometry(0.02, 10, 8), rim));
+  return group;
+}
+
+function buildLantern(): Group {
+  const group = new Group();
+  const brass = mat("#c4a056", { metalness: 0.72, roughness: 0.28 });
+  add(group, new Mesh(new CylinderGeometry(0.028, 0.032, 0.04, 12), brass)).position.y = -0.08;
+  add(group, new Mesh(new CylinderGeometry(0.034, 0.03, 0.03, 12), brass)).position.y = 0.06;
+  const glass = add(
+    group,
+    new Mesh(
+      new CylinderGeometry(0.03, 0.03, 0.09, 12),
+      mat("#f4e0a8", {
+        roughness: 0.12,
+        transparent: true,
+        opacity: 0.55,
+        emissive: "#ffb45a",
+        emissiveIntensity: 0.8,
+      }),
+    ),
+  );
+  glass.position.y = -0.01;
+  const flame = add(group, new Mesh(new SphereGeometry(0.016, 10, 8), new MeshBasicMaterial({ color: "#ffd080" })));
+  flame.position.y = -0.01;
+  const bail = add(group, new Mesh(new TorusGeometry(0.028, 0.004, 8, 16, Math.PI), brass));
+  bail.rotation.x = Math.PI;
+  bail.position.y = 0.09;
   return group;
 }
 

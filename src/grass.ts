@@ -30,7 +30,7 @@ function configureMap(
   texture.colorSpace = color ? SRGBColorSpace : NoColorSpace;
 }
 
-/** Top-down lawn using ambientCG Grass001 (CC0). Level 2 adds this after the toys are collected. */
+/** Top-down lawn using ambientCG Grass001 (CC0). Not used as a level — level 2 is the night terrace. */
 export function createGrassGround(): Mesh {
   const repeat = 12;
   const loader = new TextureLoader();

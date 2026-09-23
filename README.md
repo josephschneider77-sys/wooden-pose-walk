@@ -8,8 +8,9 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the sand** — walk there
-- **Walk into wearable gear, or tap it** — pick it up and put it on. Beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, and jetpack. All ten open the lawn (level 2)
-- **Double-tap the sand with the jetpack on** — a short hop. The old window-and-rooftop flight is not in this room
+- **Walk into wearable gear, or tap it** — pick it up and put it on. Beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, and jetpack. Finding them does not change the room
+- **Double-tap the sand with the jetpack on** — fly. Tap the glowing window to climb through it into the night terrace (level 2)
+- **On the terrace** — pick up the knife and drag the right arm through the watermelons. The stairwell opens onto the bazaar, then the vault, then the beach
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
@@ -62,7 +63,9 @@ Level 1 is the sand room. The cloak, fur hat, and sand all follow [scottstts/Thr
 - **Cloak** — plain-weave maps plus a CPU sheet with the simulated-cloth mechanisms: inextensible warp/weft, shear that locks as yarns rotate, soft bending, air drag, and frictional contact on the wooden torso and sand. The gallery solver is a 96×96 WebGPU sheet with a large self-contact hash; this demo uses a 26×32 sheet on desktop and 16×20 on mobile.
 - **Fur hat** — shell layers for the dense coat, plus head-local strands that use the simulated-fur Verlet groom and two-lobe ribbon shading. The gallery field is about 420,000 GPU strands; this hat uses 1,500 strands on desktop and 720 on mobile, parented to the head so walk and IK do not tear it off. Collecting the beret takes the fur hat off and seats the beret on the head.
 - **Sand** — mineral-grain albedo, normal, and roughness from the deformable-sand example, on a CPU heightfield. Walking drags a contact stroke (the skill’s tool segment): the foot and the path excavate, push a berm in the direction of motion, and slump at the dynamic repose slope (0.48 while fresh, 0.625 once it settles). A small pool of kicked grains follows the stroke. Desktop runs a finer grid and more slump sweeps than mobile. The gallery path (512² WebGPU transport, 16k airborne grains, and the wave reset) is not shipped. Grain pitch is about 6 mm so the speckle still reads from the orbit camera.
-- **Level 1 gear** — the original wearable set (beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, jetpack) scattered on the sand. Picking one up equips it on the mannequin. The jetpack flames while you walk or hop; the earlier bazaar, melon terrace, and window flight are not in this room. Collecting all ten opens level 2, the grass lawn from `src/grass.ts`.
+- **Level 1 gear** — the original wearable set (beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, jetpack) scattered on the sand. Picking one up equips it on the mannequin. The jetpack flames while you walk or fly. Wearing every piece brightens the window; it does not swap the sand for a lawn.
+- **Window** — ebony mullions on the left wall, with a dim gold glow. The glow goes hot and the mullions drop away once every sand find is worn. Level 2 is flying the jetpack through that opening onto the night terrace.
+- **Later rooms** — the terrace holds a knife and watermelons. Chopping them opens the stairwell, which drops into the bazaar. Sell worn gear to the twin, buy his lantern, and walk it to the moth-gate. The vault lights snuff as you reach them, and the last one lets you out onto the beach.
 
 Query flags for the controlling fields: `?cloth=wire`, `?fur=base`, `?fur=strands`, `?sand=height`.
 
@@ -80,4 +83,4 @@ Phones and narrow windows take the mobile tier (coarser cloth, fewer fur shells,
 - Body: original procedural wooden mannequin in this repo (no third-party mesh)
 - Face: [Infinite 3D Head Scan](https://www.ir-ltd.net/) by Lee Perry-Smith / Infinite Realities (CC BY 3.0), via the [three.js LeePerrySmith example](https://github.com/mrdoob/three.js/tree/r182/examples/models/gltf/LeePerrySmith)
 - Wood, plaster, shadows, and the image pipeline: the same skills pack (`threejs-procedural-materials`, `threejs-shadow-systems`, `threejs-image-pipeline`)
-- Level 2 lawn: [ambientCG Grass001](https://ambientcg.com/view?id=Grass001) (CC0), via `src/grass.ts`
+- Grass texture (not used as a level): [ambientCG Grass001](https://ambientcg.com/view?id=Grass001) (CC0), via `src/grass.ts`
