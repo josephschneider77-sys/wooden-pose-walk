@@ -25,6 +25,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createFootLock, updateFootLockingState } from "./footLock";
 import {
   createWalker,
+  poseHover,
   poseMannequin,
   setDestination,
   steerWalker,
@@ -46,7 +47,7 @@ import {
 import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createImagePipeline } from "./pipeline";
-import { ToyShelf } from "./collectibles";
+import { GearShelf } from "./wearables";
 import { createGrassBlades, createGrassGround } from "./grass";
 import { debugMode, graphicsTier } from "./quality";
 import type { SandStroke } from "./sandFloor";
@@ -99,19 +100,16 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   controls.target.set(0, 0.95, 0);
 
   const sand = new SandFloor();
-  const toys = new ToyShelf(sand);
-  scene.add(toys.group);
   let onLawn = false;
   const key = buildRoom(scene, sand);
   const showCollect = (): void => {
-    if (collectHud instanceof HTMLElement) collectHud.textContent = toys.label();
+    if (collectHud instanceof HTMLElement) collectHud.textContent = gear.label();
   };
-  showCollect();
   const enterLawn = (): void => {
     if (onLawn) return;
     onLawn = true;
     sand.mesh.visible = false;
-    toys.group.visible = false;
+    gear.group.visible = false;
     const tier = graphicsTier();
     scene.add(createGrassGround());
     const blades = createGrassBlades(tier === "mobile" ? 900 : 2400, 8.5);
@@ -128,7 +126,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
   const cape = new ClothCape(figure);
   scene.add(cape.mesh);
   const hat = new FurHat(figure);
+  const gear = new GearShelf(sand, figure);
+  scene.add(gear.group);
+  showCollect();
   const pickList = figure.pickables();
+  let lastTap = 0;
+
+  const noteGear = (found: string | null): void => {
+    if (!found) return;
+    if (gear.wearing("beret")) hat.group.visible = false;
+    showCollect();
+    if (gear.remaining === 0) enterLawn();
+    else hint.textContent = found;
+  };
 
   const walker = createWalker();
   figure.refreshWorld();
@@ -267,12 +277,15 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       floorPoint.x = clamp(floorPoint.x, -ROOM, ROOM);
       floorPoint.z = clamp(floorPoint.z, -ROOM, ROOM);
       floorPoint.y = 0;
-      if (!onLawn && toys.collectNear(floorPoint.x, floorPoint.z, 1.05)) {
-        showCollect();
-        if (toys.remaining === 0) enterLawn();
-      }
-      setDestination(walker, floorPoint);
-      if (!onLawn) hint.textContent = "Walking there";
+      const now = performance.now();
+      const hadPack = gear.wearing("jetpack");
+      const found = onLawn ? null : gear.collectNear(floorPoint.x, floorPoint.z, 0.95);
+      const fly = hadPack && now - lastTap < 450;
+      lastTap = now;
+      noteGear(found);
+      setDestination(walker, floorPoint, fly && gear.wearing("jetpack"));
+      if (fly && gear.wearing("jetpack")) hint.textContent = "Flying there";
+      else if (!onLawn && !found) hint.textContent = "Walking there";
     }
   });
 
@@ -370,11 +383,23 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       return;
     }
 
-    const { walkWeight } = steerWalker(walker, figure.root.position, dt);
-    const contacts = poseMannequin(figure, walker, walkWeight, time, {
-      leftArm: holds.has("leftArm"),
-      rightArm: holds.has("rightArm"),
-    });
+    const { walkWeight, flying } = steerWalker(
+      walker,
+      figure.root.position,
+      dt,
+      gear.wearing("jetpack"),
+    );
+    const contacts = { leftContact: false, rightContact: false };
+    if (flying) {
+      poseHover(figure, walker, time);
+    } else {
+      const posed = poseMannequin(figure, walker, walkWeight, time, {
+        leftArm: holds.has("leftArm"),
+        rightArm: holds.has("rightArm"),
+      });
+      contacts.leftContact = posed.leftContact;
+      contacts.rightContact = posed.rightContact;
+    }
     figure.worldPos("leftToe", leftToe);
     figure.worldPos("rightToe", rightToe);
 
@@ -384,7 +409,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     updateFootLockingState(
       leftLock,
       leftToe,
-      contacts.leftContact && !holds.has("leftLeg"),
+      !flying && contacts.leftContact && !holds.has("leftLeg"),
       figure.toeMinHeight,
       dt,
       UNLOCK_DISTANCE,
@@ -394,17 +419,17 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     updateFootLockingState(
       rightLock,
       rightToe,
-      contacts.rightContact && !holds.has("rightLeg"),
+      !flying && contacts.rightContact && !holds.has("rightLeg"),
       figure.toeMinHeight,
       dt,
       UNLOCK_DISTANCE,
       LOCK_DISTANCE,
       BLEND_TIME,
     );
-    if (!holds.has("leftLeg")) leftTarget.copy(leftLock.position);
-    if (!holds.has("rightLeg")) rightTarget.copy(rightLock.position);
+    if (!flying && !holds.has("leftLeg")) leftTarget.copy(leftLock.position);
+    if (!flying && !holds.has("rightLeg")) rightTarget.copy(rightLock.position);
 
-    if (!holds.has("leftLeg")) {
+    if (!flying && !holds.has("leftLeg")) {
       figure.solveLeg("left", leftTarget, {
         enableHeightClamp: true,
         enableHeelLookAt: true,
@@ -412,7 +437,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
         softening: SOFTENING,
       });
     }
-    if (!holds.has("rightLeg")) {
+    if (!flying && !holds.has("rightLeg")) {
       figure.solveLeg("right", rightTarget, {
         enableHeightClamp: true,
         enableHeelLookAt: true,
@@ -421,7 +446,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       });
     }
 
-    applyHolds(walkWeight);
+    if (!flying) applyHolds(walkWeight);
 
     const focus = grab?.id ?? hover;
     if (focus) {
@@ -432,7 +457,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     cape.update(dt, time, walker.speed, walker.yaw, (x, z) => (onLawn ? 0 : sand.heightAt(x, z)));
-    hat.update(dt, time, camera, walker.speed, walker.yaw);
+    if (hat.group.visible) hat.update(dt, time, camera, walker.speed, walker.yaw);
+    gear.setThrust(gear.wearing("jetpack") && (flying || walker.speed > 0.2), time);
     figure.worldPos("leftHeel", leftHeel);
     figure.worldPos("leftToe", leftToe);
     figure.worldPos("rightHeel", rightHeel);
@@ -452,11 +478,11 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       figure.root.position.z,
     ];
     const pressures = [
-      leftPlanted ? 1 : 0,
-      leftPlanted ? 0.85 : 0,
-      rightPlanted ? 1 : 0,
-      rightPlanted ? 0.85 : 0,
-      walker.speed > 0.12 ? 0.9 : 0,
+      !flying && leftPlanted ? 1 : 0,
+      !flying && leftPlanted ? 0.85 : 0,
+      !flying && rightPlanted ? 1 : 0,
+      !flying && rightPlanted ? 0.85 : 0,
+      !flying && walker.speed > 0.12 ? 0.9 : 0,
     ];
     if (!onLawn) {
       if (!strokeReady) {
@@ -477,11 +503,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       trail.forEach((value, index) => {
         strokePrev[index] = value;
       });
-      toys.update(dt, time);
-      if (toys.collectNear(figure.root.position.x, figure.root.position.z, 0.62)) {
-        showCollect();
-        if (toys.remaining === 0) enterLawn();
-      }
+      gear.update(time);
+      noteGear(gear.collectNear(figure.root.position.x, figure.root.position.z, 0.55));
     }
 
     figure.worldPos("chest", follow);

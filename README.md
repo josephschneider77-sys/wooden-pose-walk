@@ -8,7 +8,8 @@ Built for the browser with Vite, TypeScript, and Three.js. The figure is procedu
 
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
 - **Tap / click the sand** — walk there
-- **Walk into a wooden toy, or tap it** — pick it up. Five toys open the lawn (level 2)
+- **Walk into wearable gear, or tap it** — pick it up and put it on. Beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, and jetpack. All ten open the lawn (level 2)
+- **Double-tap the sand with the jetpack on** — a short hop. The old window-and-rooftop flight is not in this room
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
@@ -59,9 +60,9 @@ Recipes follow [Inverse Kinematics and Foot Locking](https://theorangeduck.com/p
 Level 1 is the sand room. The cloak, fur hat, and sand all follow [scottstts/Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) (`threejs-procedural-materials`), scaled down so the page stays on WebGL2:
 
 - **Cloak** — plain-weave maps plus a CPU sheet with the simulated-cloth mechanisms: inextensible warp/weft, shear that locks as yarns rotate, soft bending, air drag, and frictional contact on the wooden torso and sand. The gallery solver is a 96×96 WebGPU sheet with a large self-contact hash; this demo uses a 26×32 sheet on desktop and 16×20 on mobile.
-- **Fur hat** — shell layers for the dense coat, plus head-local strands that use the simulated-fur Verlet groom and two-lobe ribbon shading. The gallery field is about 420,000 GPU strands; this hat uses 1,500 strands on desktop and 720 on mobile, parented to the head so walk and IK do not tear it off.
+- **Fur hat** — shell layers for the dense coat, plus head-local strands that use the simulated-fur Verlet groom and two-lobe ribbon shading. The gallery field is about 420,000 GPU strands; this hat uses 1,500 strands on desktop and 720 on mobile, parented to the head so walk and IK do not tear it off. Collecting the beret takes the fur hat off and seats the beret on the head.
 - **Sand** — mineral-grain albedo, normal, and roughness from the deformable-sand example, on a CPU heightfield. Walking drags a contact stroke (the skill’s tool segment): the foot and the path excavate, push a berm in the direction of motion, and slump at the dynamic repose slope (0.48 while fresh, 0.625 once it settles). A small pool of kicked grains follows the stroke. Desktop runs a finer grid and more slump sweeps than mobile. The gallery path (512² WebGPU transport, 16k airborne grains, and the wave reset) is not shipped. Grain pitch is about 6 mm so the speckle still reads from the orbit camera.
-- **Level 1 toys** — five wooden toys on the sand. Collecting all of them hides the sand and opens level 2, the grass lawn from `src/grass.ts`.
+- **Level 1 gear** — the original wearable set (beret, sunglasses, shoes, shirt, pants, belt, socks, knife, shield, jetpack) scattered on the sand. Picking one up equips it on the mannequin. The jetpack flames while you walk or hop; the earlier bazaar, melon terrace, and window flight are not in this room. Collecting all ten opens level 2, the grass lawn from `src/grass.ts`.
 
 Query flags for the controlling fields: `?cloth=wire`, `?fur=base`, `?fur=strands`, `?sand=height`.
 
