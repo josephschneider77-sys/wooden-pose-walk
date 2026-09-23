@@ -46,6 +46,7 @@ import {
 import { clamp } from "./math";
 import { attachRealisticFace } from "./face";
 import { createImagePipeline } from "./pipeline";
+import { debugMode } from "./quality";
 import { createPlasterMaterial, createWoodMaterial } from "./wood";
 
 const ROOM = 8.4;
@@ -386,7 +387,8 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     controls.update();
     snapKeyShadow(key, follow);
 
-    pipeline.render(true, true, true, false);
+    const post = debugMode("post") !== "off";
+    pipeline.render(post, post, post, debugMode("ao") === "debug");
     requestAnimationFrame(tick);
   };
 
