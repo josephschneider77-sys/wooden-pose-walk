@@ -7,6 +7,8 @@ export interface Walker {
   yaw: number;
   speed: number;
   phase: number;
+  fly: boolean;
+  climb: number;
 }
 
 export function createWalker(): Walker {
@@ -15,29 +17,50 @@ export function createWalker(): Walker {
     yaw: 0,
     speed: 0,
     phase: 0,
+    fly: false,
+    climb: FLY_HEIGHT,
   };
 }
 
 const MAX_SPEED = 1.24;
+const FLY_SPEED = 2.2;
 const ACCEL = 2.6;
 const DECEL = 3.4;
 const TURN_RATE = 3.4;
 const ARRIVE = 0.2;
 const STEP_METERS = 0.72;
+/** Short hop. A higher climb pushes the camera follow past the standing-view guard. */
+const FLY_HEIGHT = 0.85;
 
-export function setDestination(walker: Walker, point: Vector3): void {
+export function setDestination(walker: Walker, point: Vector3, fly = false): void {
   walker.destination = point.clone();
   walker.destination.y = 0;
+  walker.fly = fly;
+  walker.climb = FLY_HEIGHT;
 }
 
 export function steerWalker(
   walker: Walker,
   rootPosition: Vector3,
   dt: number,
-): { walkWeight: number; arrived: boolean } {
+  canFly = false,
+): { walkWeight: number; arrived: boolean; flying: boolean } {
+  let flying = false;
+  if (canFly && (walker.fly || rootPosition.y > 0.08)) {
+    const rising = walker.fly && walker.destination !== null;
+    const targetY = rising ? walker.climb : 0;
+    rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
+    if (!rising) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
+    if (rootPosition.y < 0.08 && !walker.destination) walker.fly = false;
+    flying = rootPosition.y > 0.22;
+  } else {
+    walker.fly = false;
+    if (rootPosition.y > 0) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
+  }
+
   if (!walker.destination) {
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
-    return { walkWeight: saturate(walker.speed / 0.35), arrived: true };
+    return { walkWeight: flying ? 0 : saturate(walker.speed / 0.35), arrived: true, flying };
   }
 
   const to = walker.destination.clone().sub(rootPosition);
@@ -46,7 +69,7 @@ export function steerWalker(
   if (distance < ARRIVE) {
     walker.destination = null;
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
-    return { walkWeight: saturate(walker.speed / 0.35), arrived: true };
+    return { walkWeight: flying ? 0 : saturate(walker.speed / 0.35), arrived: true, flying };
   }
 
   const desiredYaw = Math.atan2(to.x, to.z);
@@ -55,7 +78,8 @@ export function steerWalker(
 
   const facing = 1 - saturate(Math.abs(shortestAngle(walker.yaw, desiredYaw)) / 1.2);
   const slow = saturate((distance - ARRIVE) / 0.7);
-  const targetSpeed = MAX_SPEED * facing * Math.max(0.35, slow);
+  const max = flying ? FLY_SPEED : MAX_SPEED;
+  const targetSpeed = max * (flying ? Math.max(0.55, facing) : facing * Math.max(0.35, slow));
   if (walker.speed < targetSpeed) {
     walker.speed = Math.min(targetSpeed, walker.speed + ACCEL * dt);
   } else {
@@ -70,7 +94,32 @@ export function steerWalker(
   rootPosition.x += Math.sin(walker.yaw) * walker.speed * dt;
   rootPosition.z += Math.cos(walker.yaw) * walker.speed * dt;
 
-  return { walkWeight: saturate(walker.speed / 0.42), arrived: false };
+  return { walkWeight: flying ? 0 : saturate(walker.speed / 0.42), arrived: false, flying };
+}
+
+/** Tucked legs and a forward lean while the jetpack is off the sand. */
+export function poseHover(figure: WoodenMannequin, walker: Walker, time: number): void {
+  figure.resetPose();
+  const lean = Math.min(0.22, walker.speed * 0.08);
+  const pelvis = figure.bone("pelvis");
+  pelvis.position.y = figure.restPelvisY + Math.sin(time * 6) * 0.02;
+  pelvis.quaternion.copy(figure.restLocal.get("pelvis")!);
+  pelvis.rotateX(-0.12 - lean);
+  figure.bone("chest").rotateX(0.08);
+  for (const side of ["left", "right"] as const) {
+    const hip = figure.bone(side === "left" ? "leftHip" : "rightHip");
+    const knee = figure.bone(side === "left" ? "leftKnee" : "rightKnee");
+    hip.quaternion.copy(figure.restLocal.get(side === "left" ? "leftHip" : "rightHip")!);
+    knee.quaternion.copy(figure.restLocal.get(side === "left" ? "leftKnee" : "rightKnee")!);
+    hip.rotateX(-0.55);
+    knee.rotateX(1.05);
+    const shoulder = figure.bone(side === "left" ? "leftShoulder" : "rightShoulder");
+    shoulder.quaternion.copy(figure.restLocal.get(side === "left" ? "leftShoulder" : "rightShoulder")!);
+    shoulder.rotateZ((side === "left" ? 1 : -1) * 0.35);
+    shoulder.rotateX(-0.25);
+  }
+  figure.bone("root").rotation.set(0, walker.yaw, 0);
+  figure.refreshWorld();
 }
 
 function poseLeg(
