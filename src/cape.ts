@@ -147,6 +147,21 @@ export class ClothCape {
     this.writeGeometry();
   }
 
+  /** Re-drape on the figure after a portal jump so the sheet does not stretch across rooms. */
+  snap(): void {
+    this.figure.refreshWorld();
+    for (let v = 0; v <= this.sheet.h; v++) {
+      for (let u = 0; u <= this.sheet.w; u++) {
+        const p = this.sheet.points[this.sheet.index(u, v)]!;
+        cloakSurface(this.figure, u / this.sheet.w, v / this.sheet.h, p.position);
+        p.previous.copy(p.position);
+        p.velocity.set(0, 0, 0);
+      }
+    }
+    this.pinCollar();
+    this.writeGeometry();
+  }
+
   update(
     dt: number,
     time: number,

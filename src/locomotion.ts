@@ -29,14 +29,14 @@ const DECEL = 3.4;
 const TURN_RATE = 3.4;
 const ARRIVE = 0.2;
 const STEP_METERS = 0.72;
-/** Short hop. A higher climb pushes the camera follow past the standing-view guard. */
-const FLY_HEIGHT = 0.85;
+/** Cruise height for a double-tap. The window passage asks for a higher climb. */
+const FLY_HEIGHT = 1.58;
 
-export function setDestination(walker: Walker, point: Vector3, fly = false): void {
+export function setDestination(walker: Walker, point: Vector3, fly = false, climb = FLY_HEIGHT): void {
   walker.destination = point.clone();
   walker.destination.y = 0;
   walker.fly = fly;
-  walker.climb = FLY_HEIGHT;
+  walker.climb = climb;
 }
 
 export function steerWalker(
@@ -44,19 +44,15 @@ export function steerWalker(
   rootPosition: Vector3,
   dt: number,
   canFly = false,
+  groundY = 0,
 ): { walkWeight: number; arrived: boolean; flying: boolean } {
-  let flying = false;
-  if (canFly && (walker.fly || rootPosition.y > 0.08)) {
-    const rising = walker.fly && walker.destination !== null;
-    const targetY = rising ? walker.climb : 0;
-    rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
-    if (!rising) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
-    if (rootPosition.y < 0.08 && !walker.destination) walker.fly = false;
-    flying = rootPosition.y > 0.22;
-  } else {
-    walker.fly = false;
-    if (rootPosition.y > 0) rootPosition.y = Math.max(0, rootPosition.y - 4.2 * dt);
-  }
+  if (!canFly) walker.fly = false;
+  const fly = canFly && (walker.fly || rootPosition.y > groundY + 0.08);
+  const targetY = canFly && walker.fly && walker.destination ? walker.climb : groundY;
+  rootPosition.y += (targetY - rootPosition.y) * Math.min(1, dt * 2.3);
+  if (!fly) rootPosition.y = Math.max(groundY, rootPosition.y - 4.2 * dt);
+  if (rootPosition.y < groundY + 0.08 && !walker.destination) walker.fly = false;
+  const flying = rootPosition.y > groundY + 0.28;
 
   if (!walker.destination) {
     walker.speed = Math.max(0, walker.speed - DECEL * dt);
