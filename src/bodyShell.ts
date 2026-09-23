@@ -4,7 +4,7 @@ import {
   projectOutBox,
   projectOutCapsule,
   projectOutSphere,
-  type ClothParticle,
+  type ClothPoint,
 } from "./verletCloth";
 
 /** Small air gap. Large margins fight the springs and make the cloak explode. */
@@ -74,6 +74,11 @@ export class BodyShell {
     hy: 0.1,
     hz: 0.1,
   }));
+  private readonly gap = new Vector3();
+  private readonly segment = new Vector3();
+  private readonly closest = new Vector3();
+  private readonly local = new Vector3();
+  private readonly inverse = new Quaternion();
 
   refresh(figure: WoodenMannequin): void {
     const s = this.spheres;
@@ -133,7 +138,7 @@ export class BodyShell {
    * Push free particles onto the exterior. Torso / head eject toward
    * `back` so vertices do not spike out the top or front.
    */
-  resolve(particles: ClothParticle[], skipCount: number, settle = false, back?: Vector3): void {
+  resolve(particles: ClothPoint[], skipCount: number, settle = false, back?: Vector3): void {
     for (let i = skipCount; i < particles.length; i++) {
       const p = particles[i];
       for (const box of this.boxes) {
@@ -148,5 +153,90 @@ export class BodyShell {
         projectOutCapsule(p, this.capsules[c].a, this.capsules[c].b, this.capsules[c].radius, settle, prefer);
       }
     }
+  }
+
+  /**
+   * Outward normal when `position` is inside a collider or within `slack`
+   * of its skin. The cape uses this for Coulomb friction after projection.
+   */
+  contactNormal(position: Vector3, out: Vector3, slack = 0.0026): boolean {
+    let best = slack;
+    let hit = false;
+    const keep = (gap: number, nx: number, ny: number, nz: number): void => {
+      if (gap >= best) return;
+      best = gap;
+      out.set(nx, ny, nz);
+      hit = true;
+    };
+
+    for (const sphere of this.spheres) {
+      this.gap.subVectors(position, sphere.center);
+      const dist = this.gap.length();
+      if (dist < 1e-8) {
+        keep(-sphere.radius, 0, 0, -1);
+        continue;
+      }
+      this.gap.multiplyScalar(1 / dist);
+      keep(dist - sphere.radius, this.gap.x, this.gap.y, this.gap.z);
+    }
+
+    for (const capsule of this.capsules) {
+      this.segment.subVectors(capsule.b, capsule.a);
+      const lenSq = this.segment.lengthSq();
+      let t = 0;
+      if (lenSq > 1e-10) {
+        t = Math.min(
+          1,
+          Math.max(0, this.gap.subVectors(position, capsule.a).dot(this.segment) / lenSq),
+        );
+      }
+      this.closest.copy(capsule.a).addScaledVector(this.segment, t);
+      this.gap.subVectors(position, this.closest);
+      const dist = this.gap.length();
+      if (dist < 1e-8) {
+        keep(-capsule.radius, 0, 0, -1);
+        continue;
+      }
+      this.gap.multiplyScalar(1 / dist);
+      keep(dist - capsule.radius, this.gap.x, this.gap.y, this.gap.z);
+    }
+
+    for (const box of this.boxes) {
+      this.inverse.copy(box.rotation).invert();
+      this.local.copy(position).sub(box.center).applyQuaternion(this.inverse);
+      const ax = Math.abs(this.local.x);
+      const ay = Math.abs(this.local.y);
+      const az = Math.abs(this.local.z);
+      if (ax <= box.hx && ay <= box.hy && az <= box.hz) {
+        const dx = box.hx - ax;
+        const dy = box.hy - ay;
+        const dz = box.hz - az;
+        this.gap.set(0, 0, 0);
+        let gap = 0;
+        if (dx <= dy && dx <= dz) {
+          this.gap.x = this.local.x >= 0 ? 1 : -1;
+          gap = -dx;
+        } else if (dy <= dz) {
+          this.gap.y = this.local.y >= 0 ? 1 : -1;
+          gap = -dy;
+        } else {
+          this.gap.z = this.local.z >= 0 ? 1 : -1;
+          gap = -dz;
+        }
+        this.gap.applyQuaternion(box.rotation);
+        keep(gap, this.gap.x, this.gap.y, this.gap.z);
+      } else {
+        const cx = Math.min(box.hx, Math.max(-box.hx, this.local.x));
+        const cy = Math.min(box.hy, Math.max(-box.hy, this.local.y));
+        const cz = Math.min(box.hz, Math.max(-box.hz, this.local.z));
+        this.gap.set(this.local.x - cx, this.local.y - cy, this.local.z - cz);
+        const dist = this.gap.length();
+        if (dist < 1e-8) continue;
+        this.gap.multiplyScalar(1 / dist).applyQuaternion(box.rotation);
+        keep(dist, this.gap.x, this.gap.y, this.gap.z);
+      }
+    }
+
+    return hit;
   }
 }

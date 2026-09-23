@@ -10,6 +10,12 @@ const DRAG = 1 - DAMPING;
 /** Drape restDistanceB — longer bending rest lets the sheet sag into folds. */
 const BEND_SLACK = 1.03;
 
+/** Position pair shared by the Verlet helper and the woven cape. */
+export interface ClothPoint {
+  position: Vector3;
+  previous: Vector3;
+}
+
 export class ClothParticle {
   readonly position = new Vector3();
   readonly previous = new Vector3();
@@ -118,7 +124,7 @@ export function satisfyConstraint(a: ClothParticle, b: ClothParticle, rest: numb
  * position plus collider motion so the cloth can cling.
  */
 export function collideSphereFriction(
-  particle: ClothParticle,
+  particle: ClothPoint,
   center: Vector3,
   prevCenter: Vector3,
   radius: number,
@@ -157,7 +163,7 @@ const _invRot = new Quaternion();
  * Move onto the surface without adding bounce. Optional settle
  * kills leftover inward speed and damps sliding.
  */
-function applyLift(particle: ClothParticle, normal: Vector3, lift: number, settle: boolean): void {
+function applyLift(particle: ClothPoint, normal: Vector3, lift: number, settle: boolean): void {
   particle.position.addScaledVector(normal, lift);
   particle.previous.addScaledVector(normal, lift);
   if (!settle) return;
@@ -169,7 +175,7 @@ function applyLift(particle: ClothParticle, normal: Vector3, lift: number, settl
 
 /** Hard projection so cloth cannot remain inside a sphere. */
 export function projectOutSphere(
-  particle: ClothParticle,
+  particle: ClothPoint,
   center: Vector3,
   radius: number,
   settle = false,
@@ -194,7 +200,7 @@ export function projectOutSphere(
 
 /** Hard projection out of a bone capsule (segment + radius). */
 export function projectOutCapsule(
-  particle: ClothParticle,
+  particle: ClothPoint,
   a: Vector3,
   b: Vector3,
   radius: number,
@@ -216,7 +222,7 @@ export function projectOutCapsule(
  * face so cloth stays on the exterior of torso / pelvis / head volumes.
  */
 export function projectOutBox(
-  particle: ClothParticle,
+  particle: ClothPoint,
   center: Vector3,
   rotation: Quaternion,
   hx: number,

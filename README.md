@@ -1,13 +1,13 @@
 # Mannequin Walk
 
-A playable figure-study demo: a **wooden artist’s pose mannequin** walks across a grass lawn when you tap or click. Legs are solved with Daniel Holden’s two-bone IK and runtime **toe** foot locking (inertialization), so planted feet stay put instead of skating with raw root motion.
+A playable figure-study demo: a **wooden artist’s pose mannequin** in a charcoal cloak and a cozy fur hat walks across a sand floor when you tap or click. Legs are solved with Daniel Holden’s two-bone IK and runtime **toe** foot locking (inertialization), so planted feet stay put instead of skating with raw root motion.
 
 Built for the browser with Vite, TypeScript, and Three.js. The figure is procedural (wood-grain segments and ball joints) — no downloaded character mesh.
 
 ## Controls
 
 - **Grab an arm or a leg** — drag it to pose; the limb stays where you put it
-- **Tap / click the floor** — walk there
+- **Tap / click the sand** — walk there
 - **Drag empty space** — orbit the camera
 - **Scroll / pinch** — zoom
 
@@ -53,13 +53,28 @@ The walk cycle is a source pose (procedural). Inverse kinematics is applied as a
 
 Recipes follow [Inverse Kinematics and Foot Locking](https://theorangeduck.com/page/inverse-kinematics-foot-locking) by Daniel Holden / Orange Duck. Offline PBD locking and organ-label anatomy quiz are out of scope for this slice.
 
+## Look
+
+Level 1 is the sand room. The cloak, fur hat, and sand all follow [scottstts/Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) (`threejs-procedural-materials`), scaled down so the page stays on WebGL2:
+
+- **Cloak** — plain-weave maps plus a CPU sheet with the simulated-cloth mechanisms: inextensible warp/weft, shear that locks as yarns rotate, soft bending, air drag, and frictional contact on the wooden torso and sand. The gallery solver is a 96×96 WebGPU sheet with a large self-contact hash; this demo uses a 26×32 sheet on desktop and 16×20 on mobile.
+- **Fur hat** — shell layers for the dense coat, plus head-local strands that use the simulated-fur Verlet groom and two-lobe ribbon shading. The gallery field is about 420,000 GPU strands; this hat uses 1,500 strands on desktop and 720 on mobile, parented to the head so walk and IK do not tear it off.
+- **Sand** — mineral-grain albedo, normal, and roughness from the deformable-sand example, on a CPU heightfield. Planted feet press a print and a small berm that slumps at the skill’s angle of repose (slope 0.625). The gallery path (512² WebGPU transport, airborne grains, and the wave reset) is not shipped. Grain pitch is about 6 mm so the speckle still reads from the orbit camera. `src/grass.ts` remains for a later lawn level and is not spawned here.
+
+Query flags for the controlling fields: `?cloth=wire`, `?fur=base`, `?fur=strands`, `?sand=height`.
+
+Phones and narrow windows take the mobile tier (coarser cloth, fewer fur shells, smaller sand grid).
+
 ## Credits
 
 - Animation / IK methods: [Daniel Holden](https://theorangeduck.com/page/inverse-kinematics-foot-locking) (Orange Duck)
 - Engine: [Three.js](https://threejs.org/) (MIT)
-- Cloak: Verlet cloth from the official [three.js cloth example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_cloth.html) (MIT), with bending springs and frictional contact from [Drape](https://github.com/aatishb/drape) by Aatish Bhatia, Demi Fang, and Sigrid Adriaenssens (MIT)
-- Cloak fabric: [ambientCG Fabric008](https://ambientcg.com/view?id=Fabric008) (CC0)
+- Cloak, fur hat, and sand: adapted from [Three.js Awesome Graphics Agent Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) by Scott Sun (MIT). Copyright (c) 2026 Scott Sun. The pack license is MIT, with GPL-3.0-only applying to the optional deformable-sand `coconut_tree.glb` gallery asset — that model is **not** included here. Mechanisms used:
+  - `skills/threejs-procedural-materials/examples/simulated-cloth/` and `references/simulated-cloth-system.md`
+  - `skills/threejs-procedural-materials/examples/simulated-fur/` and `references/simulated-fur-system.md`
+  - `skills/threejs-procedural-materials/examples/deformable-sand/` (grain shading and repose; not the GPL coconut)
+- Earlier cloak contact ideas also drew on the [three.js cloth example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_cloth.html) (MIT) and [Drape](https://github.com/aatishb/drape) (MIT). The live cloak is the woven skill sheet, not the Fabric008 texture.
 - Body: original procedural wooden mannequin in this repo (no third-party mesh)
 - Face: [Infinite 3D Head Scan](https://www.ir-ltd.net/) by Lee Perry-Smith / Infinite Realities (CC BY 3.0), via the [three.js LeePerrySmith example](https://github.com/mrdoob/three.js/tree/r182/examples/models/gltf/LeePerrySmith)
-- Look: walnut / ebony / plaster PBR identities and studio lighting from [scottstts/Threejs-Awesome-Graphics-Agent-Skills](https://github.com/scottstts/Threejs-Awesome-Graphics-Agent-Skills) (`threejs-procedural-materials`, `threejs-shadow-systems`, `threejs-image-pipeline`)
-- Lawn: [ambientCG Grass001](https://ambientcg.com/view?id=Grass001) (CC0) plus short instanced blades from the stylized meadow-grass skill
+- Wood, plaster, shadows, and the image pipeline: the same skills pack (`threejs-procedural-materials`, `threejs-shadow-systems`, `threejs-image-pipeline`)
+- Unused lawn textures, if a later level turns `src/grass.ts` back on: [ambientCG Grass001](https://ambientcg.com/view?id=Grass001) (CC0)
