@@ -275,7 +275,10 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     { x: 0, z: 0, planted: false },
   ];
   const holdWorld = new Vector3();
-  let last = performance.now();
+  // Seed from the animation clock, not performance.now(). Those clocks disagree
+  // after a long startup, and a negative step sends the camera under the sand.
+  let last = -1;
+  let startupFrames = 0;
 
   const applyHolds = (walkWeight: number): void => {
     for (const [id, local] of holds) {
@@ -296,15 +299,41 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
   };
 
+  const presentScene = (): void => {
+    const post = !presentDirect && debugMode("post") !== "off";
+    try {
+      pipeline.render(post, post, post, debugMode("ao") === "debug");
+    } catch (error) {
+      presentDirect = true;
+      console.warn("Post processing failed; drawing the scene directly.", error);
+      renderer.render(scene, camera);
+    }
+    // A fresh load that stays on the beige clear is the reported failure.
+    // Snap back to the standing view and draw it directly.
+    if (startupFrames < 6) {
+      startupFrames += 1;
+      if (frameIsFlatBeige(renderer)) {
+        startupFrames = 6;
+        presentDirect = true;
+        camera.position.set(3.4, 2.15, 4.6);
+        controls.target.set(0, 0.95, 0);
+        renderer.render(scene, camera);
+      }
+    }
+  };
+
   const tick = (now: number) => {
-    // The first animation timestamp can sit behind performance.now() after a
-    // long startup. A negative step flings the orbit target underground and
-    // the view is only the beige clear color.
+    if (last < 0) {
+      last = now;
+      presentScene();
+      requestAnimationFrame(tick);
+      return;
+    }
     const dt = Math.min(0.033, Math.max(0, (now - last) / 1000));
     last = now;
     const time = now / 1000;
     if (dt === 0) {
-      pipeline.render(false, false, false, false);
+      presentScene();
       requestAnimationFrame(tick);
       return;
     }
@@ -392,22 +421,51 @@ export function startStudio(canvas: HTMLCanvasElement): void {
 
     figure.worldPos("chest", follow);
     follow.y += 0.08;
+    if (!Number.isFinite(follow.y) || follow.y < 0.45 || follow.y > 2.4) {
+      follow.set(0, 1.03, 0);
+    }
     controls.target.lerp(follow, 1 - Math.exp(-3.2 * dt));
     controls.update();
+    if (camera.position.y < 0.45 || controls.target.y < 0.45) {
+      camera.position.set(3.4, 2.15, 4.6);
+      controls.target.set(0, 0.95, 0);
+    }
     snapKeyShadow(key, follow);
 
-    const post = !presentDirect && debugMode("post") !== "off";
-    try {
-      pipeline.render(post, post, post, debugMode("ao") === "debug");
-    } catch (error) {
-      presentDirect = true;
-      console.warn("Post processing failed; drawing the scene directly.", error);
-      renderer.render(scene, camera);
-    }
+    presentScene();
     requestAnimationFrame(tick);
   };
 
   requestAnimationFrame(tick);
+}
+
+/** True when the framebuffer is the empty beige clear (or fully transparent). */
+function frameIsFlatBeige(renderer: WebGLRenderer): boolean {
+  const gl = renderer.getContext();
+  const width = gl.drawingBufferWidth;
+  const height = gl.drawingBufferHeight;
+  if (width < 2 || height < 2) return false;
+  const pixel = new Uint8Array(4);
+  const samples = [
+    [0.5, 0.5],
+    [0.5, 0.62],
+    [0.44, 0.48],
+    [0.56, 0.52],
+  ] as const;
+  for (const [fx, fy] of samples) {
+    gl.readPixels((width * fx) | 0, (height * fy) | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    const r = pixel[0] ?? 0;
+    const g = pixel[1] ?? 0;
+    const b = pixel[2] ?? 0;
+    const a = pixel[3] ?? 0;
+    if (a < 8) return true;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    // The standing figure puts wood or cloth on these samples. The clear is a
+    // light, low-saturation beige (about #efe2c8).
+    if (!(max > 185 && max - min < 48)) return false;
+  }
+  return true;
 }
 
 function pickFloor(
