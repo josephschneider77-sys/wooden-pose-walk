@@ -121,7 +121,16 @@ function blendNeckIntoWood(
  * Shoulders and extra bust are clipped. The remaining neck fades
  * into walnut inside the mannequin socket.
  */
-export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group> {
+export async function attachRealisticFace(figure: WoodenMannequin): Promise<Group | null> {
+  try {
+    return await attachFaceScan(figure);
+  } catch (error) {
+    console.warn("Face scan unavailable; keeping the wooden head.", error);
+    return null;
+  }
+}
+
+async function attachFaceScan(figure: WoodenMannequin): Promise<Group> {
   const base = import.meta.env.BASE_URL;
   const [gltf, color, spec, normal, displacement] = await Promise.all([
     new GLTFLoader().loadAsync(`${base}models/face/LeePerrySmith.glb`),
