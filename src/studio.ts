@@ -885,14 +885,19 @@ export function startStudio(canvas: HTMLCanvasElement): void {
       requestAnimationFrame(tick);
       return;
     }
-    const dt = Math.min(0.033, Math.max(0, (now - last) / 1000));
+    const raw = Math.max(0, (now - last) / 1000);
     last = now;
     const time = now / 1000;
-    if (dt === 0) {
+    if (raw === 0) {
       presentScene();
       requestAnimationFrame(tick);
       return;
     }
+    // One displayed frame may cover a hitch. Step the body in short slices so a
+    // stall does not skip the window, and cap the catch-up so a bad timestamp
+    // cannot throw the figure across the room.
+    const budget = Math.min(raw, 0.75);
+    const dt = Math.min(0.033, budget);
 
     if (pendingGo && performance.now() - pendingGo.at >= DOUBLE_MS) {
       goTo(pendingGo.point, false);
@@ -900,20 +905,31 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     }
 
     const jet = gear.isWorn("jetpack") && (world === "sand" || world === "roof");
-    floorY = world === "roof" && !upperCleared ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z) : 0;
-    const { walkWeight, flying, arrived } = steerWalker(walker, figure.root.position, dt, jet, floorY);
     const wall = performance.now() / 1000;
-    if (world === "roof" && !upperCleared && rooms.stairs.open && wall - lastPortal > 0.8 && floorY <= CELLAR_Y + 0.3) {
-      enterBazaar();
-    }
-    if (
-      (world === "sand" || world === "roof") &&
-      !windowsGone &&
-      flying &&
-      wall - lastPortal > 1.3 &&
-      throughPortal(figure.root.position)
-    ) {
-      enterWorld(world === "sand" ? "roof" : "sand");
+    let remain = budget;
+    let walkWeight = 0;
+    let flying = false;
+    let arrived = false;
+    while (remain > 1e-4) {
+      const slice = Math.min(0.05, remain);
+      remain -= slice;
+      floorY = world === "roof" && !upperCleared ? rooms.stairs.heightAt(figure.root.position.x, figure.root.position.z) : 0;
+      const steered = steerWalker(walker, figure.root.position, slice, jet, floorY);
+      walkWeight = steered.walkWeight;
+      flying = steered.flying;
+      arrived = steered.arrived;
+      if (world === "roof" && !upperCleared && rooms.stairs.open && wall - lastPortal > 0.8 && floorY <= CELLAR_Y + 0.3) {
+        enterBazaar();
+      }
+      if (
+        (world === "sand" || world === "roof") &&
+        !windowsGone &&
+        flying &&
+        wall - lastPortal > 1.3 &&
+        throughPortal(figure.root.position)
+      ) {
+        enterWorld(world === "sand" ? "roof" : "sand");
+      }
     }
     if (world === "bazaar" && pendingShop && arrived && bazaar?.inShopRange(figure.root.position.x, figure.root.position.z)) {
       pendingShop = false;
@@ -1099,7 +1115,7 @@ export function startStudio(canvas: HTMLCanvasElement): void {
     if (!Number.isFinite(follow.y) || follow.y < followMin || follow.y > followMax) {
       follow.set(0, 1.03, 0);
     }
-    controls.target.lerp(follow, 1 - Math.exp(-3.2 * dt));
+    controls.target.lerp(follow, 1 - Math.exp(-3.2 * budget));
     controls.update();
     if (world === "sand" && !flying && (camera.position.y < 0.45 || controls.target.y < 0.45)) {
       camera.position.set(3.4, 2.15, 4.6);
